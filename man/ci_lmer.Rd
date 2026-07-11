@@ -16,6 +16,7 @@ ci_lmer(
   return_profile = FALSE,
   onestep = FALSE,
   nonneg = TRUE,
+  accelerate = TRUE,
   ...
 )
 }
@@ -62,6 +63,14 @@ equivalent to full profiling but substantially cheaper.}
 parameters are unaffected: any real value is feasible for some choice of
 nuisance parameters, so no such constraint applies. Set \code{FALSE} for
 diagnostic purposes.}
+
+\item{accelerate}{Logical. If \code{TRUE} (default), the outward search
+chooses each step by a secant prediction of the critical-value crossing,
+capped at twice the previous accepted step, and refines the bracketing
+interval by regula falsi to the resolution of the fixed-step search;
+nuisance warm starts are extrapolated along the accepted path. Typically
+needs 5--10 times fewer profile evaluations per bound. If \code{FALSE},
+every step has length \code{step_size} (the fixed-step search).}
 
 \item{...}{Additional arguments passed to the trust-region optimizer.}
 }

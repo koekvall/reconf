@@ -34,6 +34,17 @@ test_that("ci_lmer: lower bound is non-negative for variance parameter", {
   expect_gte(ci[1], 0)
 })
 
+test_that("accelerated and fixed-step searches agree", {
+  skip_on_cran()
+  # Both searches resolve the crossing to within one step_size (SE/40), so
+  # bounds must agree to that resolution. Guards the secant step logic and
+  # the regula-falsi refinement against regressions such as sign errors in
+  # the slope (which silently degrade one search direction only).
+  ci_a <- ci_all_lmer(fit_ri, accelerate = TRUE)
+  ci_f <- ci_all_lmer(fit_ri, accelerate = FALSE)
+  expect_equal(ci_a, ci_f, tolerance = 1e-3)
+})
+
 # ── ci_all_lmer ──────────────────────────────────────────────────────────────
 
 test_that("ci_all_lmer returns matrix with correct dimensions", {

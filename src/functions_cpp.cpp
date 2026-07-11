@@ -398,8 +398,8 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
        + 0.5 * (E3 * H.middleCols(jj * q, q)).cwiseProduct(G).sum();
 
       // Information for I(psi_j, psi_k) = 0.5 tr(F H_j F H_k)
+      Eigen::SparseMatrix<double> SHt = SH[jj].transpose();
       for(int kk = 0; kk <= jj; kk++) {
-        Eigen::SparseMatrix<double> SHt = SH[jj].transpose();
         double t1 = SHt.cwiseProduct(SH[kk]).sum();
         double t2 = (QS[kk] * H.middleCols(jj * q, q)).cwiseProduct(G).sum();
         double t3 = (QS[jj] * H.middleCols(kk * q, q)).cwiseProduct(G).sum();

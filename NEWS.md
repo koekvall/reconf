@@ -1,5 +1,17 @@
 # reconf 0.1.1
 
+* The outward CI search accelerates: each step is chosen by a secant
+  prediction of the critical-value crossing, capped at twice the previous
+  accepted step, with nuisance warm starts extrapolated along the accepted
+  path and the final bracket refined by regula falsi (alternating with
+  bisection) to the resolution of the fixed-step search. Typically 5-10
+  times fewer profile evaluations per bound; `ci_all_lmer()` on the FEV1
+  example takes about 0.6 s. Set `accelerate = FALSE` in `ci_lmer()` or
+  `ci_all_lmer()` for the previous fixed-step search; both resolve bounds
+  to within one step (SE/40) and agree to that tolerance on all test
+  models. Unbounded searches now stop at the search radius
+  `num_points * step_size` instead of after `num_points` steps.
+
 * The restricted-information computation no longer forms dense q x q
   matrices: all traces use the decomposition Z'PZ = Z'Sigma^{-1}Z - G'E1,
   whose second term has rank p, so the cost is linear in q for

@@ -10,6 +10,7 @@ ci_all_lmer(
   level = 0.95,
   onestep = FALSE,
   nonneg = TRUE,
+  accelerate = TRUE,
   ...
 )
 }
@@ -29,6 +30,9 @@ optimization. See \code{\link{ci_lmer}}. Default is \code{FALSE}.}
 
 \item{nonneg}{Logical. If \code{TRUE} (default), clamp the lower CI bound
 at 0 for variance parameters; see \code{\link{ci_lmer}}.}
+
+\item{accelerate}{Logical. If \code{TRUE} (default), use secant-accelerated
+steps in the outward search; see \code{\link{ci_lmer}}.}
 
 \item{...}{Additional arguments passed to \code{\link{ci_lmer}}.}
 }

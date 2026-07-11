@@ -44,7 +44,19 @@ get_idx_ltri <- function(row, col, n)
 # precomputed q x q factor R = chol(ZtZ) when available and falls back to
 # F = Z (an n x n check) when ZtZ is singular. Decided by attempting a sparse
 # Cholesky factorization, which fails iff the matrix is not positive definite.
-.sigma_pd <- function(Psi_r, R = NULL, Z = NULL) {
+#
+# When a gate cache is supplied (see get_precomp), the symbolic analysis of
+# the factor is reused across evaluations and only the numeric factorization
+# is redone. gate$pat0 is an all-zero matrix carrying the pattern of
+# R Psi(1) R', which contains the pattern of R Psi_r R' for every psi;
+# adding it pads the parent to the analyzed pattern.
+.sigma_pd <- function(Psi_r, R = NULL, Z = NULL, gate = NULL) {
+  if (!is.null(gate)) {
+    Mx <- Matrix::forceSymmetric(Matrix::tcrossprod(R %*% Psi_r, R)) + gate$pat0
+    return(!inherits(tryCatch(suppressWarnings(update(gate$ch, Mx, mult = 1)),
+                              error = identity),
+                     "condition"))
+  }
   M <- if (!is.null(R)) Matrix::tcrossprod(R %*% Psi_r, R)
        else Matrix::tcrossprod(Z %*% Psi_r, Z)
   M <- Matrix::forceSymmetric(M + Matrix::Diagonal(nrow(M)))
@@ -83,6 +95,21 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL) {
   }
   if (!is.null(Hlist)) {
     precomp$H <- methods::as(do.call(cbind, Hlist), "generalMatrix")
+    if (!is.null(R)) {
+      # Cache the symbolic Cholesky analysis for the feasibility check. The
+      # pattern of R Psi_r R' is contained in that of R Psi(1) R', where
+      # Psi(1) = sum of the H_j has a one in every structurally nonzero
+      # position and is positive semidefinite for the block structures
+      # produced by lme4, so the analysis of I + R Psi(1) R' covers every
+      # psi. If the initial factorization fails, .sigma_pd falls back to
+      # factorizing from scratch at each evaluation.
+      M1 <- Matrix::forceSymmetric(Matrix::tcrossprod(R %*% Reduce(`+`, Hlist), R))
+      ch <- tryCatch(suppressWarnings(
+        Matrix::Cholesky(M1 + Matrix::Diagonal(nrow(M1)), perm = TRUE,
+                         LDL = FALSE)),
+        error = function(e) NULL)
+      if (!is.null(ch)) precomp$gate <- list(ch = ch, pat0 = M1 * 0)
+    }
   }
   precomp
 }

@@ -1,5 +1,15 @@
 # reconf 0.1.1
 
+* The restricted-information computation no longer forms dense q x q
+  matrices: all traces use the decomposition Z'PZ = Z'Sigma^{-1}Z - G'E1,
+  whose second term has rank p, so the cost is linear in q for
+  block-structured models. A full REML evaluation on the FEV1 example drops
+  from 7.6 ms to 1.1 ms and `ci_all_lmer()` from 43 s to 6 s (26 s to 4 s
+  with `onestep = TRUE`) relative to reconf 0.1, with identical results.
+* The feasibility check caches the symbolic Cholesky analysis (pattern from
+  `Psi(1)`, the sum of the structure matrices) and redoes only the numeric
+  factorization at each evaluation.
+
 * The log-likelihood is now `-Inf` whenever the marginal covariance matrix
   `Sigma = Z Psi Z' + psi_r I` is not positive definite. Previously the
   log-determinant was computed from its absolute value, so infeasible

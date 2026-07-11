@@ -162,7 +162,7 @@ loglikelihood <-function(psi, b = NULL, Y, X = NULL, Z, Hlist, REML = TRUE, get_
   d <- tryCatch(Matrix::determinant(B, logarithm = TRUE),
                 error = function(e) NULL)
   if (is.null(d) || !is.finite(d$modulus) || d$sign <= 0 ||
-      !.sigma_pd(Psi_r, R = precomp$R, Z = Z)) {
+      !.sigma_pd(Psi_r, R = precomp$R, Z = Z, gate = precomp$gate)) {
     return(infeasible)
   }
   A <- Matrix::solve(B, Psi_r)

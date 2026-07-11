@@ -335,8 +335,9 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     Eigen::SparseMatrix<double> Id_p(p, p);
     Id_p.setIdentity();
     Eigen::SparseMatrix<double> C = Id_q - A * ZtZ;
-    Eigen::MatrixXd XtSiZ = (1.0 / psi_r) * XtZ * C;
-    Eigen::MatrixXd E1 = llt.solve(XtSiZ);
+    // G = X'Sigma^{-1}Z (p x q, dense)
+    Eigen::MatrixXd G = (1.0 / psi_r) * XtZ * C;
+    Eigen::MatrixXd E1 = llt.solve(G);
     Eigen::MatrixXd D2 = (1.0 / psi_r) * (Id_p - E1 * (A * XtZ.transpose()));
     Eigen::MatrixXd E2 = (1.0 / psi_r) * E1 * C;
 
@@ -361,64 +362,66 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     I_psi(r - 1, r - 1) += 0.5 * D2.transpose().cwiseProduct(D2).sum();
 
     ////////////////////////////////////////////////////////////////////////////
-    // Information and score for  psi_{-r}, precompute before loop
+    // Information and score for psi_{-r}
     ////////////////////////////////////////////////////////////////////////////
+    // All traces use the decomposition F = Z'P Z = S - G'E1, where
+    // S = Z'Sigma^{-1}Z is sparse and G'E1 = G'(X'Sigma^{-1}X)^{-1}G has rank
+    // p. Expanding tr(F H_j F H_k) then gives one sparse-sparse term, two
+    // rank-p cross terms of size p x q, and one p x p term, so no dense
+    // q x q matrix is ever formed and the cost is linear in q for
+    // block-structured models:
+    //   tr(F H_j F H_k) = tr(S H_j S H_k) - tr(S H_j G'E1 H_k)
+    //                     - tr(S H_k G'E1 H_j) + tr(E1 H_j G' E1 H_k G')
+    // using symmetry of S, H_j, and G'E1, and tr(S H_j G'E1 H_k)
+    // = sum((E1 H_k S H_j) .* G).
+    Eigen::SparseMatrix<double> S = (1.0 / psi_r) * ZtZ * C;
+    Eigen::SparseMatrix<double> ZtSi2Z = (1.0 / psi_r) * S * C;
+    Eigen::MatrixXd E3 = D2 * E1;
 
-    // Terms for S(psi_j)
-    Eigen::SparseMatrix<double> ZtSiZ = (1.0 / psi_r) * ZtZ * C;
-    Eigen::MatrixXd ZtSiXE1 = XtSiZ.transpose() * E1;
-
-    // ZtSi2Z
-    Eigen::SparseMatrix<double> ZtSi2Z = (1.0 / psi_r) * ZtSiZ * C;
-
-     //Terms for I(psi_j, psi_r)
-    Eigen::MatrixXd ZtSiXE2 = XtSiZ.transpose() * E2;
-    Eigen::MatrixXd ZtSiXD2E1 = XtSiZ.transpose() * D2 * E1;
-
-    // Terms for I(psi_j, psi_k) not needed; already have ZtSiZ and ZtSiXE1
-
-    // Precompute F = ZtSiZ' - ZtSiXE1 and F * H_j for each j, so the double
-    // loop over (jj, kk) only needs dot-product-like operations.
-    Eigen::MatrixXd F = ZtSiZ.transpose() - ZtSiXE1;
-    std::vector<Eigen::MatrixXd> FH(r - 1);
+    std::vector<Eigen::SparseMatrix<double>> SH(r - 1);
+    std::vector<Eigen::MatrixXd> Q(r - 1), QS(r - 1), Rp(r - 1);
     for (int jj = 0; jj < r - 1; jj++) {
-      FH[jj] = F * H.middleCols(jj * q, q);
+      SH[jj] = S * H.middleCols(jj * q, q);
+      Q[jj]  = E1 * H.middleCols(jj * q, q);   // p x q
+      QS[jj] = Q[jj] * S;                      // p x q
+      Rp[jj] = Q[jj] * G.transpose();          // p x p
     }
 
     for(int jj = 0; jj < r - 1; jj++) {
-      // Score for psi_j
-      s_psi(jj) -= 0.5 * ZtSiZ.cwiseProduct(H.middleCols(jj * q, q)).sum() -
-        0.5 * ZtSiXE1.cwiseProduct(H.middleCols(jj * q, q)).sum();
+      // Score for psi_j: tr(S H_j) - tr(G'E1 H_j)
+      s_psi(jj) -= 0.5 * S.cwiseProduct(H.middleCols(jj * q, q)).sum() -
+        0.5 * Q[jj].cwiseProduct(G).sum();
 
       // Information for I(psi_j, psi_r)
       I_psi(jj, r - 1) = 0.5 * ZtSi2Z.cwiseProduct(H.middleCols(jj * q, q)).sum()
-       - ZtSiXE2.cwiseProduct(H.middleCols(jj * q, q)).sum()
-       + 0.5 * ZtSiXD2E1.cwiseProduct(H.middleCols(jj * q, q)).sum();
+       - (E2 * H.middleCols(jj * q, q)).cwiseProduct(G).sum()
+       + 0.5 * (E3 * H.middleCols(jj * q, q)).cwiseProduct(G).sum();
 
-      // Information for I(psi_j, psi_k): uses precomputed FH
-      // Original: tr(F H_jj F H_kk) = tr(FH[jj] FH[kk])
-      //         = sum(FH[jj]' .* FH[kk])
-      // (H_jj symmetric, so F H_jj' = F H_jj = FH[jj])
+      // Information for I(psi_j, psi_k) = 0.5 tr(F H_j F H_k)
       for(int kk = 0; kk <= jj; kk++) {
-        I_psi(kk, jj) = 0.5 * FH[jj].transpose().cwiseProduct(FH[kk]).sum();
+        Eigen::SparseMatrix<double> SHt = SH[jj].transpose();
+        double t1 = SHt.cwiseProduct(SH[kk]).sum();
+        double t2 = (QS[kk] * H.middleCols(jj * q, q)).cwiseProduct(G).sum();
+        double t3 = (QS[jj] * H.middleCols(kk * q, q)).cwiseProduct(G).sum();
+        double t4 = Rp[jj].transpose().cwiseProduct(Rp[kk]).sum();
+        I_psi(kk, jj) = 0.5 * (t1 - t2 - t3 + t4);
       }
     }
   } else if (get_score) {
-    // Terms for S(psi_j)
+    // Terms for S(psi_j); same rank-p decomposition as in the get_inf branch
     Eigen::SparseMatrix<double> C = Id_q - A * ZtZ;
-    Eigen::MatrixXd XtSiZ = (1.0 / psi_r) * XtZ * C;
-    Eigen::MatrixXd E1 = llt.solve(XtSiZ);
+    Eigen::MatrixXd G = (1.0 / psi_r) * XtZ * C;
+    Eigen::MatrixXd E1 = llt.solve(G);
 
     s_psi(r - 1) -= (0.5 / psi_r) * (n - q + C.diagonal().sum());
     s_psi(r - 1) += (0.5 / psi_r) * (p - E1.cwiseProduct(XtZ * A).sum());
 
-    Eigen::SparseMatrix<double> ZtSiZ = (1.0 / psi_r) * ZtZ * C;
+    Eigen::SparseMatrix<double> S = (1.0 / psi_r) * ZtZ * C;
 
-    Eigen::MatrixXd ZtSiXE1 = XtSiZ.transpose() * E1;
     for(int jj = 0; jj < r - 1; jj++) {
-      // Score for psi_j
-      s_psi(jj) -= 0.5 * ZtSiZ.cwiseProduct(H.middleCols(jj * q, q)).sum() -
-        0.5 * ZtSiXE1.cwiseProduct(H.middleCols(jj * q, q)).sum();
+      // Score for psi_j: tr(S H_j) - tr(G'E1 H_j)
+      s_psi(jj) -= 0.5 * S.cwiseProduct(H.middleCols(jj * q, q)).sum() -
+        0.5 * (E1 * H.middleCols(jj * q, q)).cwiseProduct(G).sum();
     }
   }
 

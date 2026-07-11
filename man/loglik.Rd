@@ -5,7 +5,8 @@
 \title{Log-likelihood using RcppEigen}
 \usage{
 loglik(
-  Psi_r,
+  A,
+  ldetB,
   psi_r,
   H,
   e,
@@ -21,8 +22,12 @@ loglik(
 )
 }
 \arguments{
-\item{Psi_r}{The \eqn{q\times q} covariance matrix of random effects (\eqn{\Psi}) divided by error
-variance, \eqn{\Psi_r = \Psi / \psi_r}.}
+\item{A}{The \eqn{q \times q} sparse matrix
+\eqn{A = (I_q + \Psi_r Z'Z)^{-1} \Psi_r}, where \eqn{\Psi_r = \Psi / \psi_r},
+precomputed by the caller (see details).}
+
+\item{ldetB}{Log-determinant of \eqn{B = I_q + \Psi_r Z'Z}, precomputed by
+the caller.}
 
 \item{psi_r}{The error variance \eqn{\psi_r > 0}.}
 
@@ -75,4 +80,11 @@ precomputed \eqn{e = Y - X\beta}.
 
 The information matrix includes both \eqn{\beta} and \eqn{\psi} parameters,
 with dimensions \eqn{(p + r) \times (p + r)}.
+
+The caller is responsible for verifying that the parameters are feasible,
+that is, that \eqn{\psi_r > 0} and \eqn{\Sigma = Z \Psi Z' + \psi_r I_n} is
+positive definite, and for computing \code{A} and \code{ldetB}. Solving for
+\code{A} with a solver that exploits sparsity in the right-hand side (for
+example \code{Matrix::solve}) is much faster than a dense solve when the
+random effects are block-structured.
 }

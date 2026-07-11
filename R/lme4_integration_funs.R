@@ -117,25 +117,22 @@ get_Hlist_lmer <- function(lmerfit)
 #' @param REML Logical indicating whether to compute quantities for REML
 #'   (\code{TRUE}) or ML (\code{FALSE}). If \code{NULL} (default), uses the
 #'   estimation method from the fitted model.
+#' @param Hlist Optional list of structure matrices (see
+#'   \code{\link{get_Hlist_lmer}}); when supplied, their concatenation is
+#'   stored in the result so likelihood evaluations do not rebuild it.
 #'
-#' @return A list containing precomputed cross-products and other quantities:
-#'   \itemize{
-#'     \item For REML: \code{XtY}, \code{ZtY}, \code{XtX}, \code{XtZ}, \code{ZtZ}
-#'     \item For ML: \code{e} (residuals), \code{Zte}, \code{XtX}, \code{XtZ}, \code{ZtZ}
-#'   }
-#'
-#' @details
-#' The residuals \code{e} in the ML case are computed as Y - X * beta where beta
-#' comes from the fitted model. These may differ slightly from \code{residuals(lmerfit)}
-#' due to how lme4 computes residuals internally.
+#' @return A list containing precomputed cross-products and related quantities:
+#'   \code{XtX}, \code{XtZ}, \code{ZtZ}, \code{R} (sparse Cholesky factor of
+#'   \code{ZtZ}, or \code{NULL} if singular), for REML also \code{XtY} and
+#'   \code{ZtY}, and \code{H} if \code{Hlist} was supplied.
 #'
 #' @keywords internal
-get_precomp_lmer <- function(lmerfit, REML = NULL){
+get_precomp_lmer <- function(lmerfit, REML = NULL, Hlist = NULL){
   # Validate input
   if (!inherits(lmerfit, "lmerMod")) {
     stop("lmerfit must be an lmerMod object from lme4::lmer")
   }
-  
+
   if(is.null(REML)){
     # 0 indicates ML, non-zero indicates REML
     REML <- lme4::getME(lmerfit, "REML") != 0
@@ -148,9 +145,8 @@ get_precomp_lmer <- function(lmerfit, REML = NULL){
   X <- lme4::getME(lmerfit, "X")
   Z <- lme4::getME(lmerfit, "Z")
   Y <- lme4::getME(lmerfit, "y")
-  b <- if (!REML) as.vector(lme4::getME(lmerfit, "beta")) else NULL
 
-  get_precomp(Y = Y, X = X, Z = Z, b = b, REML = REML)
+  get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
 }
 
 #' Extract estimated covariance parameters from lme4 fit
@@ -266,7 +262,7 @@ score_test_lmer <- function(lmerfit,
   Z <- lme4::getME(lmerfit, "Z")
   Hlist <- get_Hlist_lmer(lmerfit)
   REML <- lme4::getME(lmerfit, "REML") != 0
-  precomp <- get_precomp_lmer(lmerfit, REML = REML)
+  precomp <- get_precomp_lmer(lmerfit, REML = REML, Hlist = Hlist)
   
   p <- ncol(X)
   r <- length(Hlist) + 1

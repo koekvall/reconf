@@ -163,6 +163,52 @@ test_that("C++ and R restricted log-likelihood values agree at MLE (REML)", {
   expect_equal(ll_cpp, ll_R, tolerance = 1e-6)
 })
 
+test_that("log-likelihood is -Inf when Sigma is not positive definite", {
+  # sleepstudy is balanced, so all subjects' blocks cross the feasibility
+  # boundary together: the determinant of I + Psi_r Z'Z stays positive at
+  # infeasible parameters and a determinant sign check alone cannot detect
+  # them. Guards the Cholesky-based gate in loglikelihood.
+  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = FALSE)
+  psi_hat <- reconf:::get_psi_hat_lmer(fit)
+  b_hat   <- as.vector(getME(fit, "beta"))
+  Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
+  Hlist <- reconf:::get_Hlist_lmer(fit)
+
+  psi_bad <- psi_hat
+  psi_bad[1] <- -1e6  # Sigma indefinite; det(I + Psi_r Z'Z) still positive
+
+  ll_ml <- reconf:::loglikelihood(psi = psi_bad, b = b_hat, Y = Y, X = X, Z = Z,
+                                  Hlist = Hlist, REML = FALSE,
+                                  get_val = TRUE, get_score = FALSE,
+                                  get_inf = FALSE)
+  expect_identical(ll_ml$value, -Inf)
+
+  ll_reml <- reconf:::loglikelihood(psi = psi_bad, Y = Y, X = X, Z = Z,
+                                    Hlist = Hlist, REML = TRUE,
+                                    get_val = TRUE, get_score = FALSE,
+                                    get_inf = FALSE)
+  expect_identical(ll_reml$value, -Inf)
+
+  # Nonpositive error variance is infeasible
+  psi_bad2 <- psi_hat
+  psi_bad2[4] <- 0
+  ll0 <- reconf:::loglikelihood(psi = psi_bad2, Y = Y, X = X, Z = Z,
+                                Hlist = Hlist, REML = TRUE,
+                                get_val = TRUE, get_score = FALSE,
+                                get_inf = FALSE)
+  expect_identical(ll0$value, -Inf)
+
+  # A mildly negative variance parameter can still give Sigma PD; the gate
+  # must not reject it (the parameter space is Sigma PD, not Psi PSD)
+  psi_ok <- psi_hat
+  psi_ok[1] <- -20
+  ll_ok <- reconf:::loglikelihood(psi = psi_ok, Y = Y, X = X, Z = Z,
+                                  Hlist = Hlist, REML = TRUE,
+                                  get_val = TRUE, get_score = FALSE,
+                                  get_inf = FALSE)
+  expect_true(is.finite(ll_ok$value))
+})
+
 test_that("C++ and R score vectors agree at MLE (REML)", {
   fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
   psi_hat <- reconf:::get_psi_hat_lmer(fit)

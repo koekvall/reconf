@@ -17,7 +17,8 @@ loglikelihood(
   get_inf = TRUE,
   get_beta = FALSE,
   expected = TRUE,
-  precomp = NULL
+  precomp = NULL,
+  check = TRUE
 )
 }
 \arguments{
@@ -48,6 +49,10 @@ information for \eqn{\theta = [\beta', \psi']'}, otherwise for \eqn{\psi} only.}
 
 \item{precomp}{Optional list of pre-computed quantities. Entries must have the
 correct names and classes (see details).}
+
+\item{check}{If \code{TRUE} (default), validate arguments. Internal callers
+that evaluate the likelihood repeatedly with structurally identical arguments
+set \code{FALSE} to skip redundant validation.}
 }
 \value{
 A list with components:
@@ -72,26 +77,31 @@ is a \eqn{q\times q} matrix of zeros and ones. The argument \code{Hlist} is a li
 \eqn{r - 1} whose \eqn{j}th element is \eqn{H_j}. This specification implies
 each element of \eqn{\Psi} is one of \eqn{\psi_1, \dots, \psi_{r - 1}}.
 
-If \code{REML} is \code{TRUE} and \code{precomp} is supplied, it must be a
-list with following elements:
+If \code{precomp} is supplied, it must be a list with elements
 \itemize{
-\item \code{XtY = as.vector(crossprod(X, Y))}
-\item \code{ZtY = as.vector(crossprod(Z, Y))}
 \item \code{XtX = as.matrix(crossprod(X))}
 \item \code{XtZ = as.matrix(crossprod(X, Z))}
 \item \code{ZtZ = methods::as(crossprod(Z), "generalMatrix")}
 }
 
-If \code{REML} is \code{FALSE} and \code{precomp} is supplied, the required elements are:
+and, if \code{REML} is \code{TRUE}, also
 \itemize{
-\item \code{e = as.vector(Y - X \%*\% b)} (residuals; if \code{p = 0}, use \code{e = Y})
-\item \code{XtX = crossprod(X)}
-\item \code{XtZ = as.matrix(crossprod(X, Z))}
-\item \code{ZtZ = methods::as(crossprod(Z), "generalMatrix")}
+\item \code{XtY = as.vector(crossprod(X, Y))}
+\item \code{ZtY = as.vector(crossprod(Z, Y))}
 }
 
-If \code{REML} is \code{FALSE} and \code{precomp} is \code{NULL}, the parameter \code{b}
-must be provided when \code{p > 0} to compute residuals \code{e = Y - X \%*\% b}.
-When \code{p = 0}, residuals are computed as \code{e = Y}.
+Optional entries, computed internally when absent: \code{H} (the matrix
+\code{cbind(Hlist)} coerced to \code{generalMatrix}) and \code{R} (sparse
+Cholesky factor of \code{ZtZ}, used by the feasibility check). Use
+\code{get_precomp} to construct all entries at once.
+
+If \code{REML} is \code{FALSE}, the parameter \code{b} must be provided
+when \code{p > 0} to compute residuals \code{e = Y - X \%*\% b}. When
+\code{p = 0}, residuals are computed as \code{e = Y}.
+
+The parameters are feasible if \code{psi[r] > 0} and
+\eqn{\Sigma = Z \Psi Z' + \psi_r I_n} is positive definite; this allows
+\eqn{\Psi} to be indefinite. At infeasible parameters the value is
+\code{-Inf} and score and information are zero.
 }
 \keyword{internal}

@@ -32,8 +32,8 @@ error variance last.}
 
 \item{step_size}{Positive numeric. Step size for the outward search (on the
 parameter scale). If \code{NULL} (default), set automatically to
-\code{SE / 20} where SE is derived from the expected information, giving
-roughly 20 steps per Wald CI half-width.}
+\code{SE / 40} where SE is derived from the expected information, giving
+roughly 40 steps per Wald CI half-width.}
 
 \item{num_points}{Positive integer. Maximum number of steps in each
 direction. Default is 500. Increase if the CI bound is not found.}
@@ -76,7 +76,6 @@ Computes a score-based confidence interval for a single covariance parameter
 in a linear mixed model fitted with lme4, by inverting the score test
 statistic. The signed score profile is evaluated on a grid and the CI bounds
 are located by linear interpolation at the +/- critical value crossings.
-1
 }
 \details{
 The confidence interval is constructed as the inversion of the one-dimensional

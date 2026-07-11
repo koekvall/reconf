@@ -5,7 +5,8 @@
 \title{Restricted log-likelihood using RcppEigen}
 \usage{
 loglik_res(
-  Psi_r,
+  A,
+  ldetB,
   psi_r,
   H,
   Y,
@@ -22,8 +23,12 @@ loglik_res(
 )
 }
 \arguments{
-\item{Psi_r}{The \eqn{q\times q} covariance matrix of random effects (\eqn{\Psi}) divided by error
-variance, \eqn{\Psi_r = \Psi / \psi_r} of class \code{dgCMatrix}.}
+\item{A}{The \eqn{q \times q} sparse matrix
+\eqn{A = (I_q + \Psi_r Z'Z)^{-1} \Psi_r}, where \eqn{\Psi_r = \Psi / \psi_r},
+precomputed by the caller (see \code{?loglik}).}
+
+\item{ldetB}{Log-determinant of \eqn{B = I_q + \Psi_r Z'Z}, precomputed by
+the caller.}
 
 \item{psi_r}{The error variance \eqn{\psi_r > 0}.}
 
@@ -60,8 +65,8 @@ A list with components:
 \item{beta}{Partial maximizer of the regular likelihood in \eqn{\beta},
 \eqn{\tilde{\beta} = (X' \Sigma^{-1} X)^{-1} X' \Sigma^{-1}Y},
 where \eqn{\Sigma = Z\Psi Z' + \psi_r I_n}}
-\item{I_b_inv_chol}{Cholesky root of the expected inverse information matrix
-for \eqn{\beta}, \eqn{I(\beta; \psi)^{-1} = (X' \Sigma^{-1} X)^{-1}}}
+\item{I_b_chol}{Cholesky root of the expected information matrix
+for \eqn{\beta}, \eqn{I(\beta; \psi) = X' \Sigma^{-1} X}}
 }
 \description{
 Computes the restricted log-likelihood, score vector, and information matrix
@@ -78,4 +83,12 @@ are variances and covariances of random effects.
 The argument matrix \code{H} is \eqn{H = [H_1, \dots, H_{r - 1}]}.
 
 The restricted likelihood integrates out the fixed effects \eqn{\beta}.
+
+The caller is responsible for verifying feasibility and computing \code{A}
+and \code{ldetB}; see \code{?loglik}.
+
+\code{A} and \code{H} are received by value (deep copy) rather than as
+maps: Eigen's products with blocks of mapped sparse matrices fall back to
+slow generic paths in the information computations, and the copies are
+cheap relative to the algebra.
 }

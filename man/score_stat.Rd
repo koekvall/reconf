@@ -16,7 +16,8 @@ score_stat(
   efficient = TRUE,
   signed = FALSE,
   known_idx = NULL,
-  precomp = NULL
+  precomp = NULL,
+  check = TRUE
 )
 }
 \arguments{
@@ -64,6 +65,10 @@ as nuisance parameters. Must not overlap with \code{test_idx}.}
 \item{precomp}{List or \code{NULL} containing precomputed quantities to speed
 up computation (see \code{?get_precomp}). If \code{NULL}, all quantities
 are computed from scratch.}
+
+\item{check}{If \code{TRUE} (default), validate arguments and warn when the
+information matrix is poorly conditioned. Internal callers in loops set
+\code{FALSE}.}
 }
 \value{
 Numeric value or vector containing the score test statistic with

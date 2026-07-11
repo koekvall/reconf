@@ -18,8 +18,11 @@ Psi_from_H_cpp <- function(psi_mr, H) {
 #' Computes the log-likelihood, score vector, and information matrix
 #' for the covariance parameter vector in a linear mixed effects model.
 #'
-#' @param Psi_r The \eqn{q\times q} covariance matrix of random effects (\eqn{\Psi}) divided by error
-#'        variance, \eqn{\Psi_r = \Psi / \psi_r}.
+#' @param A The \eqn{q \times q} sparse matrix
+#'        \eqn{A = (I_q + \Psi_r Z'Z)^{-1} \Psi_r}, where \eqn{\Psi_r = \Psi / \psi_r},
+#'        precomputed by the caller (see details).
+#' @param ldetB Log-determinant of \eqn{B = I_q + \Psi_r Z'Z}, precomputed by
+#'        the caller.
 #' @param psi_r The error variance \eqn{\psi_r > 0}.
 #' @param H Sparse \eqn{q \times (qr - q)} matrix of horizontally concatenated
 #'        derivatives of \eqn{\Psi} (see details) of class \code{dgCMatrix}.
@@ -55,10 +58,17 @@ Psi_from_H_cpp <- function(psi_mr, H) {
 #' The information matrix includes both \eqn{\beta} and \eqn{\psi} parameters,
 #' with dimensions \eqn{(p + r) \times (p + r)}.
 #'
+#' The caller is responsible for verifying that the parameters are feasible,
+#' that is, that \eqn{\psi_r > 0} and \eqn{\Sigma = Z \Psi Z' + \psi_r I_n} is
+#' positive definite, and for computing \code{A} and \code{ldetB}. Solving for
+#' \code{A} with a solver that exploits sparsity in the right-hand side (for
+#' example \code{Matrix::solve}) is much faster than a dense solve when the
+#' random effects are block-structured.
+#'
 #' @useDynLib reconf, .registration=TRUE
 #' @import Matrix
-loglik <- function(Psi_r, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
-    .Call(`_reconf_loglik`, Psi_r, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val, get_score, get_inf, expected)
+loglik <- function(A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
+    .Call(`_reconf_loglik`, A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val, get_score, get_inf, expected)
 }
 
 #' Restricted log-likelihood using RcppEigen
@@ -66,8 +76,11 @@ loglik <- function(Psi_r, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, get_
 #' Computes the restricted log-likelihood, score vector, and information matrix
 #' for the covariance parameter vector in a linear mixed effects model.
 #'
-#' @param Psi_r The \eqn{q\times q} covariance matrix of random effects (\eqn{\Psi}) divided by error
-#'        variance, \eqn{\Psi_r = \Psi / \psi_r} of class \code{dgCMatrix}.
+#' @param A The \eqn{q \times q} sparse matrix
+#'        \eqn{A = (I_q + \Psi_r Z'Z)^{-1} \Psi_r}, where \eqn{\Psi_r = \Psi / \psi_r},
+#'        precomputed by the caller (see \code{?loglik}).
+#' @param ldetB Log-determinant of \eqn{B = I_q + \Psi_r Z'Z}, precomputed by
+#'        the caller.
 #' @param psi_r The error variance \eqn{\psi_r > 0}.
 #' @param H Sparse \eqn{q \times q(r - 1)} matrix of horizontally concatenated
 #'        derivatives of \eqn{\Psi} (see details) of class \code{dgCMatrix}.
@@ -90,8 +103,8 @@ loglik <- function(Psi_r, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, get_
 #' \item{beta}{Partial maximizer of the regular likelihood in \eqn{\beta},
 #'   \eqn{\tilde{\beta} = (X' \Sigma^{-1} X)^{-1} X' \Sigma^{-1}Y},
 #'   where \eqn{\Sigma = Z\Psi Z' + \psi_r I_n}}
-#' \item{I_b_inv_chol}{Cholesky root of the expected inverse information matrix
-#'   for \eqn{\beta}, \eqn{I(\beta; \psi)^{-1} = (X' \Sigma^{-1} X)^{-1}}}
+#' \item{I_b_chol}{Cholesky root of the expected information matrix
+#'   for \eqn{\beta}, \eqn{I(\beta; \psi) = X' \Sigma^{-1} X}}
 #'
 #' @details The model is \deqn{Y = X\beta + Z U + E,} where \eqn{U \sim N_q(0, \Psi)}
 #' and \eqn{E \sim N_n(0, \psi_r I_n)}. The first \eqn{r - 1} elements of \eqn{\psi}
@@ -104,9 +117,17 @@ loglik <- function(Psi_r, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, get_
 #'
 #' The restricted likelihood integrates out the fixed effects \eqn{\beta}.
 #'
+#' The caller is responsible for verifying feasibility and computing \code{A}
+#' and \code{ldetB}; see \code{?loglik}.
+#'
+#' \code{A} and \code{H} are received by value (deep copy) rather than as
+#' maps: Eigen's products with blocks of mapped sparse matrices fall back to
+#' slow generic paths in the information computations, and the copies are
+#' cheap relative to the algebra.
+#'
 #' @useDynLib reconf, .registration=TRUE
 #' @import Matrix
-loglik_res <- function(Psi_r, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val = TRUE, get_score = TRUE, get_inf = TRUE) {
-    .Call(`_reconf_loglik_res`, Psi_r, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val, get_score, get_inf)
+loglik_res <- function(A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val = TRUE, get_score = TRUE, get_inf = TRUE) {
+    .Call(`_reconf_loglik_res`, A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val, get_score, get_inf)
 }
 

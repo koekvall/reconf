@@ -4,7 +4,7 @@
 #' in a linear mixed model fitted with lme4, by inverting the score test
 #' statistic. The signed score profile is evaluated on a grid and the CI bounds
 #' are located by linear interpolation at the +/- critical value crossings.
-#'1
+#'
 #' @param lmerfit An \code{lmerMod} object from fitting a linear mixed model
 #'   using \code{lme4::lmer}.
 #' @param test_idx Single positive integer specifying which covariance parameter
@@ -14,8 +14,8 @@
 #' @param level Numeric confidence level in (0, 1). Default is \code{0.95}.
 #' @param step_size Positive numeric. Step size for the outward search (on the
 #'   parameter scale). If \code{NULL} (default), set automatically to
-#'   \code{SE / 20} where SE is derived from the expected information, giving
-#'   roughly 20 steps per Wald CI half-width.
+#'   \code{SE / 40} where SE is derived from the expected information, giving
+#'   roughly 40 steps per Wald CI half-width.
 #' @param num_points Positive integer. Maximum number of steps in each
 #'   direction. Default is 500. Increase if the CI bound is not found.
 #' @param REML Logical or \code{NULL}. If \code{NULL} (default), the estimation
@@ -77,136 +77,20 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
                     known_idx = NULL, return_profile = FALSE,
                     onestep = FALSE, nonneg = TRUE, ...) {
 
-  if (!inherits(lmerfit, "lmerMod"))
-    stop("lmerfit must be an lmerMod object from lme4::lmer")
-
-  assertthat::assert_that(
-    is.numeric(test_idx), length(test_idx) == 1L,
-    test_idx == floor(test_idx), test_idx >= 1L,
-    msg = "test_idx must be a single positive integer"
-  )
-  assertthat::assert_that(
-    is.numeric(level), length(level) == 1L, level > 0, level < 1,
-    msg = "level must be a single number in (0, 1)"
-  )
-  assertthat::assert_that(
-    is.numeric(num_points), length(num_points) == 1L, num_points >= 2L,
-    msg = "num_points must be a single integer >= 2"
-  )
-
-  # Extract model components
-  Y       <- lme4::getME(lmerfit, "y")
-  X       <- lme4::getME(lmerfit, "X")
-  Z       <- lme4::getME(lmerfit, "Z")
-  Hlist   <- get_Hlist_lmer(lmerfit)
-  if (is.null(REML)) REML <- lme4::getME(lmerfit, "REML") != 0
-  # For ML, only pass geometry (XtX, XtZ, ZtZ) — residuals are recomputed from
-  # beta inside loglikelihood, so they don't go stale during the outward search.
-  if (REML) {
-    precomp <- get_precomp_lmer(lmerfit, REML = TRUE)
-  } else {
-    precomp <- list(XtX = as.matrix(crossprod(X)),
-                    XtZ = as.matrix(crossprod(X, Z)),
-                    ZtZ = methods::as(crossprod(Z), "generalMatrix"))
-  }
-  psi_hat <- get_psi_hat_lmer(lmerfit)
-  r       <- length(psi_hat)
-  p       <- ncol(X)
-
-  assertthat::assert_that(
-    test_idx <= r,
-    msg = paste0("test_idx must not exceed the number of covariance parameters (", r, ")")
-  )
-
-  # For ML fits with fixed effects, the full parameter vector is c(beta, psi)
-  # and test_idx must be shifted by p to index into psi.
-  if (!REML && p > 0) {
-    b_hat      <- lme4::fixef(lmerfit)
-    theta_hat  <- c(b_hat, psi_hat)
-    test_idx_  <- p + test_idx
-    known_idx_ <- if (is.null(known_idx)) NULL else p + known_idx
-  } else {
-    theta_hat  <- psi_hat
-    test_idx_  <- test_idx
-    known_idx_ <- known_idx
-    b_hat      <- NULL
-  }
-
-  # Determine step size from expected information if not provided.
-  # Use SE/20 so roughly 20 steps cover one Wald CI half-width on each side.
-  if (is.null(step_size)) {
-    ll <- loglikelihood(psi = psi_hat, b = b_hat, Y = Y, X = X, Z = Z,
-                        Hlist = Hlist, REML = REML,
-                        get_val = FALSE, get_score = FALSE, get_inf = TRUE,
-                        get_beta = (!REML && p > 0),
-                        expected = TRUE, precomp = precomp)
-    se_approx <- tryCatch(
-      sqrt(solve(ll$inf_mat)[test_idx_, test_idx_]),
-      error = function(e) sqrt(1 / ll$inf_mat[test_idx_, test_idx_])
-    )
-    step_size <- se_approx / 40
-  }
-
-  z_crit <- stats::qnorm((1 + level) / 2)
-
-  # Identify whether the test parameter is a variance (nonnegative) or a
-  # covariance (unconstrained). For variance rows VarCorr reports var2 as NA;
-  # this includes the residual variance row (where var1 is also NA).
-  vc <- as.data.frame(lme4::VarCorr(lmerfit), order = "lower.tri")
-  is_variance <- is.na(vc$var2[test_idx])
-  lower_clamp <- if (nonneg && is_variance) 0 else -Inf
-
-  # Search outward in both directions from the MLE, warm-starting each nuisance
-  # optimisation from the previous step's solution. Stop as soon as the signed
-  # score profile crosses the critical value on that side.
-  lower <- .outward_bound(
-    theta_hat, test_idx_, z_crit, direction = -1L,
-    step_size = step_size, max_steps = as.integer(num_points),
-    Y = Y, X = X, Z = Z, Hlist = Hlist,
-    REML = REML, expected = expected, known_idx = known_idx_,
-    precomp = precomp, p = p, onestep = onestep,
-    lower_clamp = lower_clamp, ...
-  )
-  upper <- .outward_bound(
-    theta_hat, test_idx_, z_crit, direction =  1L,
-    step_size = step_size, max_steps = as.integer(num_points),
-    Y = Y, X = X, Z = Z, Hlist = Hlist,
-    REML = REML, expected = expected, known_idx = known_idx_,
-    precomp = precomp, p = p, onestep = onestep, ...
-  )
-
-  if (is.finite(lower) && is.finite(upper) && lower >= upper) {
-    warning("Lower bound is not less than upper bound. ",
-            "Consider decreasing step_size or increasing num_points.")
-  }
-
-  # Residual row has var1 = var2 = NA; name it by grp alone. Other variance
-  # rows have var2 = NA (single variable). Covariance rows have both present.
-  if (is.na(vc$var1[test_idx])) {
-    param_name <- vc$grp[test_idx]
-  } else {
-    param_name <- paste0(
-      vc$var1[test_idx],
-      ifelse(is.na(vc$var2[test_idx]), "", paste0(":", vc$var2[test_idx])),
-      " | ", vc$grp[test_idx]
-    )
-  }
-
-  ci <- matrix(c(lower, upper), nrow = 1L,
-               dimnames = list(param_name, c("lower", "upper")))
-
-  if (return_profile)
-    warning("return_profile not supported with outward search; returning CI only.")
-
-  ci
+  setup <- .ci_setup(lmerfit, REML)
+  .ci_lmer_core(setup, test_idx = test_idx, level = level,
+                step_size = step_size, num_points = num_points,
+                expected = expected, known_idx = known_idx,
+                return_profile = return_profile, onestep = onestep,
+                nonneg = nonneg, ...)
 }
 
 
 #' Confidence intervals for covariance parameters
 #'
 #' Computes score-based confidence intervals for each covariance parameter in a
-#' linear mixed model fitted with lme4, by calling \code{\link{ci_lmer}} for
-#' each parameter.
+#' linear mixed model fitted with lme4. Model components are extracted and
+#' precomputed once and shared across parameters.
 #'
 #' @param lmerfit An \code{lmerMod} object from fitting a linear mixed model
 #'   using \code{lme4::lmer}.
@@ -238,45 +122,154 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
 #' @export
 ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
                         onestep = FALSE, nonneg = TRUE, ...) {
-  if (!inherits(lmerfit, "lmerMod"))
-    stop("lmerfit must be an lmerMod object from lme4::lmer")
+  dots <- list(...)
+  REML <- if (is.null(dots$REML)) NULL else dots$REML
+  dots$REML <- NULL
 
-  psi_hat <- get_psi_hat_lmer(lmerfit)
-  r <- length(psi_hat)
+  setup <- .ci_setup(lmerfit, REML)
 
-  if (is.null(test_idx)) test_idx <- seq_len(r)  # All covariance parameters
+  if (is.null(test_idx)) test_idx <- seq_len(setup$r)  # All covariance parameters
 
   do.call(rbind, lapply(test_idx, function(i) {
-    ci_lmer(lmerfit, test_idx = i, level = level, onestep = onestep,
-            nonneg = nonneg, ...)
+    do.call(.ci_lmer_core,
+            c(list(setup = setup, test_idx = i, level = level,
+                   onestep = onestep, nonneg = nonneg), dots))
   }))
 }
 
 
-# Internal helper ---------------------------------------------------------
+# Internal helpers ---------------------------------------------------------
 
-# Find where the numeric vector y (evaluated at x) crosses `target` from above
-# (i.e., where y - target transitions from positive to negative).
-# Returns the interpolated x value at the first such crossing if side = "lower",
-# or the last such crossing if side = "upper".
-# Issues a warning and returns +/-Inf if no crossing is found.
-.find_crossing <- function(x, y, target) {
-  f <- y - target
-  # Indices where f is positive and next point is negative (downward crossing)
-  down <- which(f[-length(f)] > 0 & f[-1] < 0)
+# Extract and precompute everything ci_lmer needs from an lmer fit, so that
+# ci_all_lmer pays the extraction cost once rather than once per parameter.
+.ci_setup <- function(lmerfit, REML = NULL) {
+  if (!inherits(lmerfit, "lmerMod"))
+    stop("lmerfit must be an lmerMod object from lme4::lmer")
+  if (is.null(REML)) REML <- lme4::getME(lmerfit, "REML") != 0
 
-  if (length(down) == 0L) {
-    direction <- if (target > 0) "lower" else "upper"
-    warning("Score profile does not cross the critical value on the ", direction,
-            " side. Consider increasing search_radius or num_points.")
-    return(if (target > 0) -Inf else Inf)
+  Y       <- lme4::getME(lmerfit, "y")
+  X       <- lme4::getME(lmerfit, "X")
+  Z       <- lme4::getME(lmerfit, "Z")
+  Hlist   <- get_Hlist_lmer(lmerfit)
+  precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
+  psi_hat <- get_psi_hat_lmer(lmerfit)
+  p       <- ncol(X)
+
+  # For ML fits with fixed effects, the full parameter vector is c(beta, psi)
+  # and covariance-parameter indices must be shifted by p.
+  b_hat     <- if (!REML && p > 0) as.vector(lme4::fixef(lmerfit)) else NULL
+  theta_hat <- c(b_hat, psi_hat)
+
+  list(Y = Y, X = X, Z = Z, Hlist = Hlist, REML = REML, precomp = precomp,
+       psi_hat = psi_hat, b_hat = b_hat, theta_hat = theta_hat,
+       r = length(psi_hat), p = p,
+       vc = as.data.frame(lme4::VarCorr(lmerfit), order = "lower.tri"))
+}
+
+# Compute the CI for one parameter given a prebuilt setup; see ci_lmer.
+.ci_lmer_core <- function(setup, test_idx, level = 0.95, step_size = NULL,
+                          num_points = 500L, expected = TRUE,
+                          known_idx = NULL, return_profile = FALSE,
+                          onestep = FALSE, nonneg = TRUE, ...) {
+
+  assertthat::assert_that(
+    is.numeric(test_idx), length(test_idx) == 1L,
+    test_idx == floor(test_idx), test_idx >= 1L,
+    msg = "test_idx must be a single positive integer"
+  )
+  assertthat::assert_that(
+    is.numeric(level), length(level) == 1L, level > 0, level < 1,
+    msg = "level must be a single number in (0, 1)"
+  )
+  assertthat::assert_that(
+    is.numeric(num_points), length(num_points) == 1L, num_points >= 2L,
+    msg = "num_points must be a single integer >= 2"
+  )
+  assertthat::assert_that(
+    test_idx <= setup$r,
+    msg = paste0("test_idx must not exceed the number of covariance parameters (",
+                 setup$r, ")")
+  )
+
+  REML <- setup$REML
+  p    <- setup$p
+  if (!REML && p > 0) {
+    test_idx_  <- p + test_idx
+    known_idx_ <- if (is.null(known_idx)) NULL else p + known_idx
+  } else {
+    test_idx_  <- test_idx
+    known_idx_ <- known_idx
   }
 
-  # Lower bound: use first crossing; upper bound: use last crossing
-  idx <- if (target > 0) down[1L] else down[length(down)]
+  # Determine step size from expected information if not provided.
+  # Use SE/40 so roughly 40 steps cover one Wald CI half-width on each side.
+  if (is.null(step_size)) {
+    ll <- loglikelihood(psi = setup$psi_hat, b = setup$b_hat, Y = setup$Y,
+                        X = setup$X, Z = setup$Z,
+                        Hlist = setup$Hlist, REML = REML,
+                        get_val = FALSE, get_score = FALSE, get_inf = TRUE,
+                        get_beta = (!REML && p > 0),
+                        expected = TRUE, precomp = setup$precomp,
+                        check = FALSE)
+    se_approx <- tryCatch(
+      sqrt(solve(ll$inf_mat)[test_idx_, test_idx_]),
+      error = function(e) sqrt(1 / ll$inf_mat[test_idx_, test_idx_])
+    )
+    step_size <- se_approx / 40
+  }
 
-  # Linear interpolation
-  x[idx] - f[idx] * (x[idx + 1L] - x[idx]) / (f[idx + 1L] - f[idx])
+  z_crit <- stats::qnorm((1 + level) / 2)
+
+  # Identify whether the test parameter is a variance (nonnegative) or a
+  # covariance (unconstrained). For variance rows VarCorr reports var2 as NA;
+  # this includes the residual variance row (where var1 is also NA).
+  vc <- setup$vc
+  is_variance <- is.na(vc$var2[test_idx])
+  lower_clamp <- if (nonneg && is_variance) 0 else -Inf
+
+  # Search outward in both directions from the MLE, warm-starting each nuisance
+  # optimisation from the previous step's solution. Stop as soon as the signed
+  # score profile crosses the critical value on that side.
+  lower <- .outward_bound(
+    setup$theta_hat, test_idx_, z_crit, direction = -1L,
+    step_size = step_size, max_steps = as.integer(num_points),
+    Y = setup$Y, X = setup$X, Z = setup$Z, Hlist = setup$Hlist,
+    REML = REML, expected = expected, known_idx = known_idx_,
+    precomp = setup$precomp, p = p, onestep = onestep,
+    lower_clamp = lower_clamp, ...
+  )
+  upper <- .outward_bound(
+    setup$theta_hat, test_idx_, z_crit, direction =  1L,
+    step_size = step_size, max_steps = as.integer(num_points),
+    Y = setup$Y, X = setup$X, Z = setup$Z, Hlist = setup$Hlist,
+    REML = REML, expected = expected, known_idx = known_idx_,
+    precomp = setup$precomp, p = p, onestep = onestep, ...
+  )
+
+  if (is.finite(lower) && is.finite(upper) && lower >= upper) {
+    warning("Lower bound is not less than upper bound. ",
+            "Consider decreasing step_size or increasing num_points.")
+  }
+
+  # Residual row has var1 = var2 = NA; name it by grp alone. Other variance
+  # rows have var2 = NA (single variable). Covariance rows have both present.
+  if (is.na(vc$var1[test_idx])) {
+    param_name <- vc$grp[test_idx]
+  } else {
+    param_name <- paste0(
+      vc$var1[test_idx],
+      ifelse(is.na(vc$var2[test_idx]), "", paste0(":", vc$var2[test_idx])),
+      " | ", vc$grp[test_idx]
+    )
+  }
+
+  ci <- matrix(c(lower, upper), nrow = 1L,
+               dimnames = list(param_name, c("lower", "upper")))
+
+  if (return_profile)
+    warning("return_profile not supported with outward search; returning CI only.")
+
+  ci
 }
 
 
@@ -320,7 +313,7 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
       loglikelihood(psi = psi_, b = b_, Y = Y, X = X, Z = Z,
                     Hlist = Hlist, REML = REML,
                     get_val = TRUE, get_score = FALSE, get_inf = FALSE,
-                    expected = TRUE, precomp = precomp)$value,
+                    expected = TRUE, precomp = precomp, check = FALSE)$value,
       error = function(e) -Inf
     )
   }
@@ -377,7 +370,7 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
                 c(list(start_val = theta_prop, opt_idx = opt_idx,
                        Y = Y, X = X, Z = Z, Hlist = Hlist,
                        expected = expected, REML = REML,
-                       precomp = precomp),
+                       precomp = precomp, check = FALSE),
                   onestep_args, dots))$arg,
         error = function(e) NULL
       )
@@ -394,7 +387,8 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
                             Y = Y, X = X, Z = Z, Hlist = Hlist,
                             REML = REML, expected = expected,
                             efficient = TRUE, signed = TRUE,
-                            known_idx = known_idx, precomp = precomp)),
+                            known_idx = known_idx, precomp = precomp,
+                            check = FALSE)),
       error = function(e) NA_real_
     )
 

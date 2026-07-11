@@ -17,6 +17,7 @@ maximize_loglik(
   rinit = 1,
   rmax = 100,
   warn_nonconv = TRUE,
+  check = TRUE,
   ...
 )
 }
@@ -64,6 +65,9 @@ Default is 100.}
 when the trust-region optimizer does not converge. Set to \code{FALSE}
 when non-convergence is expected by design (e.g., when \code{iterlim = 1L}
 is used for a one-step update).}
+
+\item{check}{If \code{TRUE} (default), validate arguments. Internal callers
+in loops set \code{FALSE} to skip redundant validation.}
 
 \item{...}{Additional arguments passed to \code{\link[trust]{trust}} optimizer,
 such as tolerance settings or iteration limits.}

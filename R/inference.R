@@ -50,6 +50,8 @@ Psi_from_Hlist <- function(psi_mr, Hlist)
 #'   when the trust-region optimizer does not converge. Set to \code{FALSE}
 #'   when non-convergence is expected by design (e.g., when \code{iterlim = 1L}
 #'   is used for a one-step update).
+#' @param check If \code{TRUE} (default), validate arguments. Internal callers
+#'   in loops set \code{FALSE} to skip redundant validation.
 #' @param ... Additional arguments passed to \code{\link[trust]{trust}} optimizer,
 #'   such as tolerance settings or iteration limits.
 #'
@@ -76,111 +78,73 @@ Psi_from_Hlist <- function(psi_mr, Hlist)
 maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
                              REML = TRUE, precomp = NULL,
                              rinit = 1, rmax = 100, warn_nonconv = TRUE,
-                             ...) {
-  # Argument checking
-  assertthat::assert_that(is.vector(start_val, mode = "numeric"), length(start_val) > 0,
-                          msg = "start_val should be a numeric vector of positive length")
-  
-  assertthat::assert_that(is.vector(opt_idx, mode = "numeric"), length(opt_idx) > 0,
-                          all(opt_idx == floor(opt_idx)), all(opt_idx > 0),
-                          msg = "opt_idx should be a vector of positive integers with length > 0")
-  
-  assertthat::assert_that(is.vector(Y, mode = "numeric"), length(Y) > 0,
-                          msg = "Y should be a numeric vector of positive length")
-  n <- length(Y)
-  
-  assertthat::assert_that(is.matrix(X), nrow(X) == n,
-                          msg = "X should be a matrix with nrow(X) == length(Y)")
-  
-  assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == n, ncol(Z) > 0,
-                          msg = "Z should be a sparse matrix with nrow(Z) == length(Y) and ncol(Z) > 0")
-  
-  assertthat::assert_that(is.list(Hlist), length(Hlist) > 0,
-                          all(sapply(Hlist, methods::is, "sparseMatrix")),
-                          msg = "Hlist should be a list of sparse matrices")
-  
-  assertthat::assert_that(is.logical(expected), length(expected) == 1,
-                          msg = "expected should be a single logical value")
-  
-  assertthat::assert_that(is.logical(REML), length(REML) == 1,
-                          msg = "REML should be a single logical value")
-  
-  assertthat::assert_that(is.null(precomp) || is.list(precomp),
-                          msg = "precomp should be NULL or a list")
-  
+                             check = TRUE, ...) {
   r <- length(Hlist) + 1
   p <- ncol(X)
-  expected_length <- if(REML) r else p + r
-  assertthat::assert_that(length(start_val) == expected_length,
-                          msg = paste0("start_val should have length ", expected_length,
-                                      " (", if(REML) "r" else "p + r", 
-                                      " for REML = ", REML, ")"))
-  
-  assertthat::assert_that(max(opt_idx) <= length(start_val),
-                          msg = "opt_idx values must not exceed length(start_val)")
-  
-  assertthat::assert_that(length(unique(opt_idx)) == length(opt_idx),
-                          msg = "opt_idx should not contain duplicate values")
-  
+
+  # Argument checking
+  if (check) {
+    assertthat::assert_that(is.vector(start_val, mode = "numeric"), length(start_val) > 0,
+                            msg = "start_val should be a numeric vector of positive length")
+
+    assertthat::assert_that(is.vector(opt_idx, mode = "numeric"), length(opt_idx) > 0,
+                            all(opt_idx == floor(opt_idx)), all(opt_idx > 0),
+                            msg = "opt_idx should be a vector of positive integers with length > 0")
+
+    assertthat::assert_that(is.vector(Y, mode = "numeric"), length(Y) > 0,
+                            msg = "Y should be a numeric vector of positive length")
+
+    assertthat::assert_that(is.matrix(X), nrow(X) == length(Y),
+                            msg = "X should be a matrix with nrow(X) == length(Y)")
+
+    assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == length(Y), ncol(Z) > 0,
+                            msg = "Z should be a sparse matrix with nrow(Z) == length(Y) and ncol(Z) > 0")
+
+    assertthat::assert_that(is.list(Hlist), length(Hlist) > 0,
+                            all(sapply(Hlist, methods::is, "sparseMatrix")),
+                            msg = "Hlist should be a list of sparse matrices")
+
+    assertthat::assert_that(is.logical(expected), length(expected) == 1,
+                            msg = "expected should be a single logical value")
+
+    assertthat::assert_that(is.logical(REML), length(REML) == 1,
+                            msg = "REML should be a single logical value")
+
+    assertthat::assert_that(is.null(precomp) || is.list(precomp),
+                            msg = "precomp should be NULL or a list")
+
+    expected_length <- if(REML) r else p + r
+    assertthat::assert_that(length(start_val) == expected_length,
+                            msg = paste0("start_val should have length ", expected_length,
+                                        " (", if(REML) "r" else "p + r",
+                                        " for REML = ", REML, ")"))
+
+    assertthat::assert_that(max(opt_idx) <= length(start_val),
+                            msg = "opt_idx values must not exceed length(start_val)")
+
+    assertthat::assert_that(length(unique(opt_idx)) == length(opt_idx),
+                            msg = "opt_idx should not contain duplicate values")
+  }
+
   if(is.null(precomp)) {
-    precomp <- list("XtX" = crossprod(X),
-                    "XtZ" = as.matrix(crossprod(X, Z)),
-                    "ZtZ" = methods::as(crossprod(Z), "generalMatrix"))
-    if(REML) {
-      precomp$XtY <- as.vector(crossprod(X, Y))
-      precomp$ZtY <- as.vector(crossprod(Z, Y))
-    }
+    precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
   }
 
   #############################################################################
   # Define the objective function to be minimized
   #############################################################################
-  H <- methods::as(do.call(cbind, Hlist), "generalMatrix")
-  if(!REML){
-    obj_fun <- function(x) {
-      theta <- start_val
-      theta[opt_idx] <- x
-      psi <- theta[(p + 1):(r + p)]
-      Psi <- Psi_from_H_cpp(psi_mr = psi[-r], H = H)
-      e <- if (p == 0) Y else Y - X %*% theta[1:p]
-      ll_things <- loglik(Psi_r = Psi / psi[r],
-                          psi_r = psi[r],
-                          H = H,
-                          e = e,
-                          X = X,
-                          Z = Z,
-                          XtX = precomp$XtX,
-                          XtZ = precomp$XtZ,
-                          ZtZ = precomp$ZtZ,
-                          get_val = TRUE,
-                          get_score = TRUE,
-                          get_inf = TRUE,
-                          expected = expected)
-      list("value" = -ll_things$value, "gradient" = -ll_things$score[opt_idx],
-           "hessian" = as.matrix(ll_things$inf_mat[opt_idx, opt_idx]))
-    }
-  } else{
-    obj_fun <- function(x) {
-      psi <- start_val
-      psi[opt_idx] <- x
-      Psi <- Psi_from_H_cpp(psi_mr = psi[-r], H = H)
-      ll_things <- loglik_res(Psi_r = Psi / psi[r],
-                              psi_r = psi[r],
-                              H = H,
-                              Y = Y,
-                              X = X,
-                              Z = Z,
-                              XtX = precomp$XtX,
-                              XtZ = precomp$XtZ,
-                              ZtZ = precomp$ZtZ,
-                              XtY = precomp$XtY,
-                              ZtY = precomp$ZtY,
-                              get_val = TRUE,
-                              get_score = TRUE,
-                              get_inf = TRUE)
-      list("value" = -ll_things$value, "gradient" = -ll_things$score[opt_idx],
-           "hessian" = as.matrix(ll_things$inf_mat[opt_idx, opt_idx]))
-    }
+  obj_fun <- function(x) {
+    theta <- start_val
+    theta[opt_idx] <- x
+    psi <- if (REML || p == 0) theta else theta[(p + 1):(p + r)]
+    b <- if (!REML && p > 0) theta[seq_len(p)] else NULL
+    ll_things <- loglikelihood(psi = psi, b = b, Y = Y, X = X, Z = Z,
+                               Hlist = Hlist, REML = REML,
+                               get_val = TRUE, get_score = TRUE, get_inf = TRUE,
+                               get_beta = !REML, expected = expected,
+                               precomp = precomp, check = FALSE)
+    list("value" = -ll_things$value, "gradient" = -ll_things$score[opt_idx],
+         "hessian" = as.matrix(ll_things$inf_mat[opt_idx, opt_idx]))
   }
 
   #############################################################################
@@ -241,6 +205,9 @@ maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
 #' @param precomp List or \code{NULL} containing precomputed quantities to speed
 #'   up computation (see \code{?get_precomp}). If \code{NULL}, all quantities
 #'   are computed from scratch.
+#' @param check If \code{TRUE} (default), validate arguments and warn when the
+#'   information matrix is poorly conditioned. Internal callers in loops set
+#'   \code{FALSE}.
 #'
 #' @return Numeric value or vector containing the score test statistic with
 #'   attributes \code{"score"} and \code{"info"}. If \code{signed = FALSE},
@@ -277,74 +244,76 @@ maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
 score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
                        expected = TRUE, efficient = TRUE, signed = FALSE,
                        known_idx = NULL,
-                       precomp = NULL)
+                       precomp = NULL, check = TRUE)
 {
+  p <- ncol(X)
+  r <- length(Hlist) + 1
+
   # Argument checking
+  if (check) {
   assertthat::assert_that(is.vector(theta, mode = "numeric"), length(theta) > 0,
                           msg = "theta should be a numeric vector of positive length")
-  
+
   assertthat::assert_that(is.vector(test_idx, mode = "numeric"), length(test_idx) > 0,
                           all(test_idx == floor(test_idx)), all(test_idx > 0),
                           msg = "test_idx should be a vector of positive integers")
-  
-  assertthat::assert_that(is.null(known_idx) || 
+
+  assertthat::assert_that(is.null(known_idx) ||
                           (is.vector(known_idx, mode = "numeric") && length(known_idx) >= 0 &&
                            all(known_idx == floor(known_idx)) && all(known_idx > 0)),
                           msg = "known_idx should be NULL or a vector of positive integers")
-  
+
   assertthat::assert_that(is.vector(Y, mode = "numeric"), length(Y) > 0,
                           msg = "Y should be a numeric vector of positive length")
-  n <- length(Y)
-  
-  assertthat::assert_that(is.matrix(X), nrow(X) == n,
+
+  assertthat::assert_that(is.matrix(X), nrow(X) == length(Y),
                           msg = "X should be a matrix with nrow(X) == length(Y)")
-  
-  assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == n, ncol(Z) > 0,
+
+  assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == length(Y), ncol(Z) > 0,
                           msg = "Z should be a sparse matrix with nrow(Z) == length(Y) and ncol(Z) > 0")
-  
+
   assertthat::assert_that(is.list(Hlist), length(Hlist) > 0,
                           all(sapply(Hlist, methods::is, "sparseMatrix")),
                           msg = "Hlist should be a list of sparse matrices")
-  
+
   assertthat::assert_that(is.logical(REML), length(REML) == 1,
                           msg = "REML should be a single logical value")
-  
+
   assertthat::assert_that(is.logical(expected), length(expected) == 1,
                           msg = "expected should be a single logical value")
-  
+
   assertthat::assert_that(is.logical(efficient), length(efficient) == 1,
                           msg = "efficient should be a single logical value")
-  
+
   assertthat::assert_that(is.logical(signed), length(signed) == 1,
                           msg = "signed should be a single logical value")
-  
+
   assertthat::assert_that(is.null(precomp) || is.list(precomp),
                           msg = "precomp should be NULL or a list")
-  
-  p <- ncol(X)
-  r <- length(Hlist) + 1
+
   expected_length <- if(REML) r else p + r
   assertthat::assert_that(length(theta) == expected_length,
                           msg = paste0("theta should have length ", expected_length,
-                                      " (", if(REML) "r" else "p + r", 
+                                      " (", if(REML) "r" else "p + r",
                                       " for REML = ", REML, ")"))
-  
+
   assertthat::assert_that(max(test_idx) <= length(theta),
                           msg = "test_idx values must not exceed length(theta)")
-  
+
   if (!is.null(known_idx)) {
     assertthat::assert_that(max(known_idx) <= length(theta),
                             msg = "known_idx values must not exceed length(theta)")
-    
+
     assertthat::assert_that(length(intersect(test_idx, known_idx)) == 0,
                             msg = "test_idx and known_idx should not overlap")
   }
-  
+
   if(!expected && REML){
     warning("Observed information not available for restricted likelihood; using
             expected.")
   }
-  
+  }
+
   # Remove duplicates from index vectors
   test_idx <- unique(test_idx)
   if (!is.null(known_idx) && length(known_idx) > 0) {
@@ -368,8 +337,10 @@ score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
                              get_inf = TRUE,
                              get_beta = (!REML && p>=1),
                              expected = expected,
-                             precomp = precomp)
-    # Check condition of information matrix
+                             precomp = precomp,
+                             check = FALSE)
+  # Check condition of information matrix (skipped in hot loops via check)
+  if (check) {
     cond <- tryCatch(
       kappa(ll_things$inf_mat, exact = FALSE),
       error = function(e) Inf
@@ -378,7 +349,8 @@ score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
       warning("Information matrix is poorly conditioned (condition number: ",
               format(cond, scientific = TRUE), "). Results may be unreliable.")
     }
-  
+  }
+
   inf_mat <- ll_things$inf_mat[test_idx, test_idx, drop = FALSE]
 
   # Use efficient information only if there are nuisance parameters
@@ -602,9 +574,8 @@ score_profile <- function(theta_start, test_idx, max_radius = 0, num_points = 1e
   }
   theta_tilde <- theta_start
   d <- length(theta_tilde)
-  b <- if (!REML && p > 0) theta_tilde[1:p] else NULL
-  if (is.null(precomp)) precomp <- get_precomp(Y = Y, X = X, Z = Z, b = b,
-    REML = REML)
+  if (is.null(precomp)) precomp <- get_precomp(Y = Y, X = X, Z = Z,
+    REML = REML, Hlist = Hlist)
 
   # Determine which parameters to optimize (exclude test, known, and fixed parameters)
   exclude_idx <- c(test_idx, known_idx, fix_idx)
@@ -628,19 +599,14 @@ score_profile <- function(theta_start, test_idx, max_radius = 0, num_points = 1e
                                      Hlist = Hlist,
                                      expected = expected,
                                      REML = REML,
-                                     precomp = precomp, ...)$arg
+                                     precomp = precomp, check = FALSE, ...)$arg
     }
-    
-    # Update residual and relevant entries of precompute
-    if(!REML && p > 0) {
-      precomp$e <- Y - X %*% theta_tilde[1:p]
-    }
-    
+
     # Store the solution from start_idx to use when searching other direction
     if (ii == 1) {
       theta_tilde_start <- theta_tilde
     }
-    # Store test_statistic 
+    # Store test_statistic
     stat_ii <- score_stat(theta = theta_tilde,
                           test_idx = test_idx,
                           Y = Y,
@@ -652,7 +618,8 @@ score_profile <- function(theta_start, test_idx, max_radius = 0, num_points = 1e
                           efficient = efficient,
                           signed = signed,
                           known_idx = known_idx,
-                          precomp = precomp)
+                          precomp = precomp,
+                          check = FALSE)
     if(return_all) {
       out[[start_idx - ii + 1]]  <- list("stat" = stat_ii,
       "score" = attr(stat_ii, "score"),
@@ -665,13 +632,10 @@ score_profile <- function(theta_start, test_idx, max_radius = 0, num_points = 1e
   # Search to the right of start_idx
   if(start_idx < num_null) {
     theta_tilde <- theta_tilde_start
-    if(!REML && p > 0) {
-      precomp$e <- Y - X %*% theta_tilde[1:p]
-    }
     # Evaluate test-statistic at null_values[ii], ii > start_idx
     for(ii in (start_idx + 1):num_null) {
       theta_tilde[test_idx] <- null_values[ii]
-      
+
       # Only optimize if there are parameters to optimize
       if (length(opt_idx) > 0) {
         theta_tilde <- maximize_loglik(start_val = theta_tilde,
@@ -682,14 +646,9 @@ score_profile <- function(theta_start, test_idx, max_radius = 0, num_points = 1e
                                       Hlist = Hlist,
                                       expected = expected,
                                       REML = REML,
-                                      precomp = precomp, ...)$arg
+                                      precomp = precomp, check = FALSE, ...)$arg
       }
-      
-      # Update residual and relevant entries of precompute
-      if(!REML && p > 0) {
-        precomp$e <- Y - X %*% theta_tilde[1:p]
-      }
-      
+
       # Store test_statistic
       stat_ii <- score_stat(theta = theta_tilde,
                             test_idx = test_idx,
@@ -702,7 +661,8 @@ score_profile <- function(theta_start, test_idx, max_radius = 0, num_points = 1e
                             efficient = efficient,
                             signed = signed,
                             known_idx = known_idx,
-                            precomp = precomp)
+                            precomp = precomp,
+                            check = FALSE)
       if(return_all) {
         out[[ii]] <- list("stat" = stat_ii,
                           "score" = attr(stat_ii, "score"),

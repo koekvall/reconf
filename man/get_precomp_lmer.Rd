@@ -4,7 +4,7 @@
 \alias{get_precomp_lmer}
 \title{Get precomputed quantities from lme4 fit}
 \usage{
-get_precomp_lmer(lmerfit, REML = NULL)
+get_precomp_lmer(lmerfit, REML = NULL, Hlist = NULL)
 }
 \arguments{
 \item{lmerfit}{An \code{lmerMod} object from fitting a linear mixed model using
@@ -13,22 +13,20 @@ get_precomp_lmer(lmerfit, REML = NULL)
 \item{REML}{Logical indicating whether to compute quantities for REML
 (\code{TRUE}) or ML (\code{FALSE}). If \code{NULL} (default), uses the
 estimation method from the fitted model.}
+
+\item{Hlist}{Optional list of structure matrices (see
+\code{\link{get_Hlist_lmer}}); when supplied, their concatenation is
+stored in the result so likelihood evaluations do not rebuild it.}
 }
 \value{
-A list containing precomputed cross-products and other quantities:
-\itemize{
-\item For REML: \code{XtY}, \code{ZtY}, \code{XtX}, \code{XtZ}, \code{ZtZ}
-\item For ML: \code{e} (residuals), \code{Zte}, \code{XtX}, \code{XtZ}, \code{ZtZ}
-}
+A list containing precomputed cross-products and related quantities:
+\code{XtX}, \code{XtZ}, \code{ZtZ}, \code{R} (sparse Cholesky factor of
+\code{ZtZ}, or \code{NULL} if singular), for REML also \code{XtY} and
+\code{ZtY}, and \code{H} if \code{Hlist} was supplied.
 }
 \description{
 Extracts and computes quantities from an lme4 fit that can be reused in
 likelihood calculations to avoid redundant computations. The quantities
 computed depend on whether REML or ML estimation is used.
-}
-\details{
-The residuals \code{e} in the ML case are computed as Y - X * beta where beta
-comes from the fitted model. These may differ slightly from \code{residuals(lmerfit)}
-due to how lme4 computes residuals internally.
 }
 \keyword{internal}

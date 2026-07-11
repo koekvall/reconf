@@ -62,6 +62,9 @@ A list with elements:
 \item{value}{The restricted log-likelihood at supplied parameters.}
 \item{score}{The restricted score at the supplied parameters.}
 \item{inf_mat}{The expected restricted information matrix at supplied parameters}
+\item{beta}{Partial maximizer of the likelihood in \eqn{\beta}}
+\item{I_b_chol}{Cholesky root of \eqn{X'\Sigma^{-1}X}, the expected
+information matrix for \eqn{\beta}}
 }
 \description{
 Computes the restricted (residual) likelihood, score, and information matrix

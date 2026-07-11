@@ -39,8 +39,8 @@ A matrix with one row per parameter and columns \code{lower} and
 }
 \description{
 Computes score-based confidence intervals for each covariance parameter in a
-linear mixed model fitted with lme4, by calling \code{\link{ci_lmer}} for
-each parameter.
+linear mixed model fitted with lme4. Model components are extracted and
+precomputed once and shared across parameters.
 }
 \examples{
 \donttest{

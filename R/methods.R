@@ -16,7 +16,10 @@ print.reconf_ci <- function(x, digits = 4, ...) {
               format(100 * attr(x, "level")), attr(x, "method")))
   m <- x
   attributes(m) <- attributes(x)[c("dim", "dimnames")]
-  print(signif(m, digits))
+  # Fixed (non-scientific) notation as in lme4 summaries; a common format
+  # across the table keeps the decimal points aligned.
+  print(format(m, digits = digits, scientific = FALSE),
+        quote = FALSE, right = TRUE)
   invisible(x)
 }
 

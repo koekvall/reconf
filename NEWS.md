@@ -8,6 +8,11 @@
   handled exactly by transforming Y, X, and Z with the square-root weights.
 * New `accelerate` argument (default `TRUE`) for a secant-accelerated
   outward search; set `FALSE` for the previous fixed-step search.
+* New `method` argument selecting the computational path. The default
+  `"auto"` uses the sparse q-by-q path, a dense n-by-n path when `q >= n`
+  and `Z` is dense, or an `O(n)`-per-evaluation spectral path when `r = 2`.
+  On a dense genomic model (n = 742, q = 1484) one evaluation drops from
+  6.8 s to 0.07 s.
 * `tidy()` methods (broom-style) and `print` methods for the confidence
   interval and score-test objects.
 

@@ -6,8 +6,16 @@ Authors@R: c(
     role = c("aut", "cre")),
     person("Yiqiao", "Zhang", email = "yiqiaozhang@ufl.edu", role = "aut"),
     person("Matias", "Shedden", email = "sheddenmatias@ufl.edu", role = "ctb"))
-Description: Computes score-based confidence intervals and hypothesis tests for
-    variance components in linear mixed models fitted with lme4.
+Description: Computes score-based confidence intervals and hypothesis tests
+    for variance and covariance parameters of random effects in linear mixed
+    models fitted with 'lme4'. The intervals invert the efficient score test
+    on the natural variance-covariance scale and are designed to remain
+    valid near the boundary of the parameter space, where Wald and likelihood
+    ratio intervals can be unreliable. The methods are described in Shedden and 
+    Ekvall (2026, in preparation), building on Ekvall and Bottai (2026)
+    <doi:10.1093/biomet/asaf079>, Zhang, Ekvall, and Molstad (2025)
+    <doi:10.1093/biomet/asaf010>, and Ekvall and Bottai (2022)
+    <doi:10.1214/22-AOS2177>.
 URL: https://github.com/koekvall/reconf
 BugReports: https://github.com/koekvall/reconf/issues
 License: MIT + file LICENSE

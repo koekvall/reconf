@@ -7,3 +7,4 @@
 ^\.claude$
 ^scripts$
 ^\.github$
+^cran-comments\.md$

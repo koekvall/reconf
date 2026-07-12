@@ -131,3 +131,82 @@ loglik_res <- function(A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get
     .Call(`_reconf_loglik_res`, A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val, get_score, get_inf)
 }
 
+#' Log-likelihood via the n-by-n formulation
+#'
+#' Computes the log-likelihood, score vector, and information matrix for the
+#' covariance parameters using dense n-by-n algebra. Intended for models
+#' where the number of random effects \eqn{q} exceeds, or is comparable to,
+#' the number of observations \eqn{n}; see \code{?loglik} for the model and
+#' the q-by-q counterpart.
+#'
+#' @param K Dense \eqn{n \times n(r - 1)} matrix of horizontally concatenated
+#'        \eqn{K_j = Z H_j Z'}. The \eqn{K_j} do not depend on \eqn{\psi} and
+#'        are precomputed once by \code{get_precomp}.
+#' @param psi Vector of length \eqn{r} of covariance parameters; the last
+#'        element is the error variance \eqn{\psi_r}.
+#' @param e Vector of length \eqn{n} of errors, or residuals, \eqn{e = Y - X\beta}.
+#' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
+#' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
+#' @param get_score If \code{TRUE} the score vector is calculated.
+#' @param get_inf If \code{TRUE}, an information matrix is calculated.
+#' @param expected If \code{TRUE}, the expected information is calculated;
+#'        otherwise the observed, or negative Hessian of the log-likelihood.
+#'
+#' @return A list with components \code{value}, \code{score}, and
+#' \code{inf_mat} as in \code{?loglik}, with score and information of
+#' dimension \eqn{p + r}.
+#'
+#' @details Each evaluation forms \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j}
+#' and factorizes it densely, so the cost is \eqn{O(r n^3 + r^2 n^2)},
+#' independent of \eqn{q}.
+#'
+#' Unlike \code{loglik}, feasibility is decided here rather than by the
+#' caller: \eqn{\Sigma} is positive definite iff its Cholesky factorization
+#' succeeds. When \eqn{q \ge n}, \eqn{Z \Psi Z'} alone can be positive
+#' definite, so \eqn{\psi_r > 0} is checked separately. At infeasible
+#' parameters \code{value} is \code{-Inf} (regardless of \code{get_val}) and
+#' score and information are zero.
+#'
+#' @useDynLib reconf, .registration=TRUE
+loglik_n <- function(K, psi, e, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
+    .Call(`_reconf_loglik_n`, K, psi, e, X, get_val, get_score, get_inf, expected)
+}
+
+#' Restricted log-likelihood via the n-by-n formulation
+#'
+#' Computes the restricted log-likelihood, score vector, and information
+#' matrix for the covariance parameters using dense n-by-n algebra; the
+#' n-side counterpart of \code{loglik_res}. See \code{?loglik_n} for when to
+#' prefer this path and \code{?loglik} for the model.
+#'
+#' @param K Dense \eqn{n \times n(r - 1)} matrix of horizontally concatenated
+#'        \eqn{K_j = Z H_j Z'}, precomputed by \code{get_precomp}.
+#' @param psi Vector of length \eqn{r} of covariance parameters; the last
+#'        element is the error variance \eqn{\psi_r}.
+#' @param Y Vector of length \eqn{n} of responses.
+#' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
+#' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
+#' @param get_score If \code{TRUE} the score vector is calculated.
+#' @param get_inf If \code{TRUE}, an information matrix is calculated.
+#'
+#' @return A list with components \code{value}, \code{score}, \code{inf_mat},
+#' \code{beta}, and \code{I_b_chol} as in \code{?loglik_res}.
+#'
+#' @details All quantities are computed from the dense factorization of
+#' \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j} and the projection
+#' \eqn{P = \Sigma^{-1} - \Sigma^{-1} X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}},
+#' formed explicitly as an \eqn{n \times n} matrix: the restricted score is
+#' \eqn{0.5\{e'\Sigma^{-1} K_j \Sigma^{-1} e - tr(P K_j)\}} with
+#' \eqn{e = Y - X\tilde\beta}, and the expected information is
+#' \eqn{0.5 tr(P K_j P K_k)}.
+#'
+#' Feasibility is decided here as in \code{?loglik_n}: at infeasible
+#' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
+#' \code{value} is \code{-Inf} (regardless of \code{get_val}), score and
+#' information are zero, and \code{beta} and \code{I_b_chol} are \code{NA}.
+#'
+#' @useDynLib reconf, .registration=TRUE
+loglik_res_n <- function(K, psi, Y, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE) {
+    .Call(`_reconf_loglik_res_n`, K, psi, Y, X, get_val, get_score, get_inf)
+}
+

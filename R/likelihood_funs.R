@@ -21,6 +21,14 @@
 #' @param check If \code{TRUE} (default), validate arguments. Internal callers
 #' that evaluate the likelihood repeatedly with structurally identical arguments
 #' set \code{FALSE} to skip redundant validation.
+#' @param method Which computational path to use: \code{"q_side"} works with
+#' sparse \eqn{q \times q} matrices via the Woodbury identity;
+#' \code{"n_side"} works with dense \eqn{n \times n} matrices and has cost
+#' independent of \eqn{q}. The default \code{"auto"} picks \code{"n_side"}
+#' iff \eqn{q \ge n} and \eqn{Z} is dense (more than 10 percent nonzeros), the
+#' regime where the sparse path degenerates; for sparse \eqn{Z} the q-side is
+#' fast even when \eqn{q \gg n}. When \code{precomp} is supplied, its
+#' \code{method} tag takes precedence and this argument is ignored.
 #'
 #'
 #' @return A list with components:
@@ -54,8 +62,10 @@
 #'
 #' Optional entries, computed internally when absent: \code{H} (the matrix
 #' \code{cbind(Hlist)} coerced to \code{generalMatrix}) and \code{R} (sparse
-#' Cholesky factor of \code{ZtZ}, used by the feasibility check). Use
-#' \code{get_precomp} to construct all entries at once.
+#' Cholesky factor of \code{ZtZ}, used by the feasibility check). A precomp
+#' list with \code{method = "n_side"} instead carries the dense matrix
+#' \code{K} of concatenated \eqn{Z H_j Z'} (see \code{?loglik_n}). Use
+#' \code{get_precomp} to construct all entries at once for either path.
 #'
 #' If \code{REML} is \code{FALSE}, the parameter \code{b} must be provided
 #' when \code{p > 0} to compute residuals \code{e = Y - X %*% b}. When
@@ -75,8 +85,10 @@
 #' @keywords internal
 loglikelihood <-function(psi, b = NULL, Y, X = NULL, Z, Hlist, REML = TRUE, get_val = TRUE,
                          get_score = TRUE, get_inf = TRUE, get_beta = FALSE,
-                         expected = TRUE, precomp = NULL, check = TRUE)
+                         expected = TRUE, precomp = NULL, check = TRUE,
+                         method = c("auto", "q_side", "n_side"))
 {
+  method <- match.arg(method)
   r <- length(psi)
   n <- length(Y)
   if(is.null(X) || ncol(X) == 0){
@@ -141,22 +153,47 @@ loglikelihood <-function(psi, b = NULL, Y, X = NULL, Z, Hlist, REML = TRUE, get_
   }
 
   if (is.null(precomp)) precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML,
-                                               Hlist = Hlist)
-  H <- precomp$H
-  if (is.null(H)) H <- methods::as(do.call(cbind, Hlist), "generalMatrix")
+                                               Hlist = Hlist, method = method)
 
   # Dimension of score/information in the returned list
   k <- if (!REML && get_beta && p > 0) p + r else r
 
-  # Feasibility gate and shared factorization. The parameters are feasible
-  # iff psi[r] > 0 and Sigma = psi_r (I_n + Z Psi_r Z') is positive definite,
-  # which holds iff I_q + F Psi_r F' is positive definite for any F with
-  # F'F = Z'Z (the nonzero eigenvalues of F Psi_r F' and Psi_r Z'Z coincide).
-  # The determinant sign alone is not sufficient: in balanced designs several
-  # eigenvalues cross zero together and the sign may not flip.
+  # Feasibility gate. The parameters are feasible iff psi[r] > 0 and
+  # Sigma = Z Psi Z' + psi_r I_n is positive definite. On the q side the
+  # latter holds iff I_q + F Psi_r F' is positive definite for any F with
+  # F'F = Z'Z (the nonzero eigenvalues of F Psi_r F' and Psi_r Z'Z coincide);
+  # the determinant sign alone is not sufficient: in balanced designs several
+  # eigenvalues cross zero together and the sign may not flip. On the n side
+  # the kernels decide it by a dense Cholesky attempt on Sigma itself.
   infeasible <- list("value" = -Inf, "score" = numeric(k),
                      "inf_mat" = matrix(0, k, k))
   if (psi[r] <= 0) return(infeasible)
+
+  # Dense n-by-n path: everything, including the Sigma feasibility gate,
+  # happens inside the kernels; see ?loglik_n. A supplied precomp determines
+  # the path (untagged lists are q-side ones built by earlier callers).
+  if (identical(precomp$method, "n_side")) {
+    if (REML) {
+      ll_things <- loglik_res_n(K = precomp$K, psi = as.numeric(psi), Y = Y,
+                                X = X, get_val = get_val,
+                                get_score = get_score, get_inf = get_inf)
+    } else {
+      e <- if (p == 0) Y else as.vector(Y - X %*% b)
+      ll_things <- loglik_n(K = precomp$K, psi = as.numeric(psi), e = e,
+                            X = X, get_val = get_val, get_score = get_score,
+                            get_inf = get_inf, expected = expected)
+      if (!get_beta && p > 0) {
+        ll_things$score <- ll_things$score[-(1:p)]
+        ll_things$inf_mat <- ll_things$inf_mat[-(1:p), -(1:p), drop = FALSE]
+      }
+    }
+    return(list("value" = ll_things$value,
+                "score" = ll_things$score,
+                "inf_mat" = ll_things$inf_mat))
+  }
+
+  H <- precomp$H
+  if (is.null(H)) H <- methods::as(do.call(cbind, Hlist), "generalMatrix")
 
   Psi_r <- (1 / psi[r]) * Psi_from_H_cpp(psi_mr = psi[-r], H = H)
   B <- Psi_r %*% precomp$ZtZ + Matrix::Diagonal(q)

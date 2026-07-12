@@ -18,7 +18,8 @@ loglikelihood(
   get_beta = FALSE,
   expected = TRUE,
   precomp = NULL,
-  check = TRUE
+  check = TRUE,
+  method = c("auto", "q_side", "n_side")
 )
 }
 \arguments{
@@ -53,6 +54,15 @@ correct names and classes (see details).}
 \item{check}{If \code{TRUE} (default), validate arguments. Internal callers
 that evaluate the likelihood repeatedly with structurally identical arguments
 set \code{FALSE} to skip redundant validation.}
+
+\item{method}{Which computational path to use: \code{"q_side"} works with
+sparse \eqn{q \times q} matrices via the Woodbury identity;
+\code{"n_side"} works with dense \eqn{n \times n} matrices and has cost
+independent of \eqn{q}. The default \code{"auto"} picks \code{"n_side"}
+iff \eqn{q \ge n} and \eqn{Z} is dense (more than 10 percent nonzeros), the
+regime where the sparse path degenerates; for sparse \eqn{Z} the q-side is
+fast even when \eqn{q \gg n}. When \code{precomp} is supplied, its
+\code{method} tag takes precedence and this argument is ignored.}
 }
 \value{
 A list with components:
@@ -92,8 +102,10 @@ and, if \code{REML} is \code{TRUE}, also
 
 Optional entries, computed internally when absent: \code{H} (the matrix
 \code{cbind(Hlist)} coerced to \code{generalMatrix}) and \code{R} (sparse
-Cholesky factor of \code{ZtZ}, used by the feasibility check). Use
-\code{get_precomp} to construct all entries at once.
+Cholesky factor of \code{ZtZ}, used by the feasibility check). A precomp
+list with \code{method = "n_side"} instead carries the dense matrix
+\code{K} of concatenated \eqn{Z H_j Z'} (see \code{?loglik_n}). Use
+\code{get_precomp} to construct all entries at once for either path.
 
 If \code{REML} is \code{FALSE}, the parameter \code{b} must be provided
 when \code{p > 0} to compute residuals \code{e = Y - X \%*\% b}. When

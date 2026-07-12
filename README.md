@@ -74,6 +74,12 @@ The parameter ordering follows `as.data.frame(VarCorr(fit), order = "lower.tri")
 
 ## Related software
 
-[lmmvar](https://github.com/yqzhang5972/lmmvar) implements the method of
-Zhang, Ekvall, and Molstad (2025) for a single variance component; `reconf`
+[varcomp](https://github.com/yqzhang5972/varcomp) (formerly
+[lmmvar](https://github.com/yqzhang5972/lmmvar)) implements the method of
+Zhang, Ekvall, and Molstad (2025) for a model with one variance component
+and an error term, with the proportion of variability (heritability) as the
+parameter of interest. After a one-time eigendecomposition, its test
+statistic is evaluated in linear time, making it preferable for large
+single-component models such as those in genomics. `reconf` instead treats
+the variances and covariances themselves as the parameters of interest and
 covers all covariance parameters in models fitted with lme4.

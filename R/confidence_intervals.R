@@ -43,6 +43,8 @@
 #'   nuisance warm starts are extrapolated along the accepted path. Typically
 #'   needs 5--10 times fewer profile evaluations per bound. If \code{FALSE},
 #'   every step has length \code{step_size} (the fixed-step search).
+#' @param method Likelihood computation path, one of \code{"auto"} (default),
+#'   \code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.
 #' @param ... Additional arguments passed to the trust-region optimizer.
 #'
 #' @return A one-row matrix of class \code{reconf_ci} with columns
@@ -87,9 +89,10 @@
 ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
                     num_points = 500L, REML = NULL, expected = TRUE,
                     known_idx = NULL, return_profile = FALSE,
-                    onestep = FALSE, nonneg = TRUE, accelerate = TRUE, ...) {
+                    onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
+                    method = c("auto", "q_side", "n_side"), ...) {
 
-  setup <- .ci_setup(lmerfit, REML)
+  setup <- .ci_setup(lmerfit, REML, method = match.arg(method))
   ci <- .ci_lmer_core(setup, test_idx = test_idx, level = level,
                       step_size = step_size, num_points = num_points,
                       expected = expected, known_idx = known_idx,
@@ -118,6 +121,8 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
 #'   at 0 for variance parameters; see \code{\link{ci_lmer}}.
 #' @param accelerate Logical. If \code{TRUE} (default), use secant-accelerated
 #'   steps in the outward search; see \code{\link{ci_lmer}}.
+#' @param method Likelihood computation path, one of \code{"auto"} (default),
+#'   \code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.
 #' @param ... Additional arguments passed to \code{\link{ci_lmer}}.
 #'
 #' @return A matrix of class \code{reconf_ci} with one row per parameter and
@@ -139,12 +144,12 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
 #' @export
 ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
                         onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
-                        ...) {
+                        method = c("auto", "q_side", "n_side"), ...) {
   dots <- list(...)
   REML <- if (is.null(dots$REML)) NULL else dots$REML
   dots$REML <- NULL
 
-  setup <- .ci_setup(lmerfit, REML)
+  setup <- .ci_setup(lmerfit, REML, method = match.arg(method))
 
   if (is.null(test_idx)) test_idx <- seq_len(setup$r)  # All covariance parameters
 
@@ -162,7 +167,9 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
 
 # Extract and precompute everything ci_lmer needs from an lmer fit, so that
 # ci_all_lmer pays the extraction cost once rather than once per parameter.
-.ci_setup <- function(lmerfit, REML = NULL) {
+# method selects the likelihood path (see ?loglikelihood); the precomp built
+# here carries the choice to every downstream likelihood evaluation.
+.ci_setup <- function(lmerfit, REML = NULL, method = "auto") {
   if (!inherits(lmerfit, "lmerMod"))
     stop("lmerfit must be an lmerMod object from lme4::lmer")
   if (is.null(REML)) REML <- lme4::getME(lmerfit, "REML") != 0
@@ -172,7 +179,8 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
   X       <- m$X
   Z       <- m$Z
   Hlist   <- get_Hlist_lmer(lmerfit)
-  precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
+  precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist,
+                         method = method)
   psi_hat <- get_psi_hat_lmer(lmerfit)
   p       <- ncol(X)
 

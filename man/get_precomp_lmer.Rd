@@ -4,7 +4,12 @@
 \alias{get_precomp_lmer}
 \title{Get precomputed quantities from lme4 fit}
 \usage{
-get_precomp_lmer(lmerfit, REML = NULL, Hlist = NULL)
+get_precomp_lmer(
+  lmerfit,
+  REML = NULL,
+  Hlist = NULL,
+  method = c("auto", "q_side", "n_side")
+)
 }
 \arguments{
 \item{lmerfit}{An \code{lmerMod} object from fitting a linear mixed model using
@@ -17,12 +22,18 @@ estimation method from the fitted model.}
 \item{Hlist}{Optional list of structure matrices (see
 \code{\link{get_Hlist_lmer}}); when supplied, their concatenation is
 stored in the result so likelihood evaluations do not rebuild it.}
+
+\item{method}{Computational path to precompute for; see
+\code{?loglikelihood}. The default \code{"auto"} picks the dense n-by-n
+path iff \eqn{q \ge n} and \eqn{Z} is dense.}
 }
 \value{
 A list containing precomputed cross-products and related quantities:
 \code{XtX}, \code{XtZ}, \code{ZtZ}, \code{R} (sparse Cholesky factor of
 \code{ZtZ}, or \code{NULL} if singular), for REML also \code{XtY} and
-\code{ZtY}, and \code{H} if \code{Hlist} was supplied.
+\code{ZtY}, and \code{H} if \code{Hlist} was supplied. For the n-side
+path, instead the dense matrix \code{K} (see \code{?loglik_n}). Either
+way the list is tagged with \code{method}.
 }
 \description{
 Extracts and computes quantities from an lme4 fit that can be reused in

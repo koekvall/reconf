@@ -84,7 +84,38 @@ get_idx_ltri <- function(row, col, n)
 # Quantities reusable across likelihood evaluations. H concatenates the
 # structure matrices; R is the Cholesky factor of ZtZ used by the feasibility
 # check (NULL when ZtZ is singular, e.g., crossed random intercepts).
-get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL) {
+#
+# With method = "n_side", instead precompute for the dense n-by-n likelihood
+# path (loglik_n, loglik_res_n): the concatenated K = [K_1 ... K_{r - 1}] with
+# K_j = Z H_j Z'. The K_j do not depend on psi, so every likelihood
+# evaluation reuses them; this is what makes the n-side path independent of q.
+#
+# method = "auto" picks n_side iff q >= n and Z is dense-ish. Dimensions
+# alone are not the right criterion: with sparse Z (e.g., crossed
+# intercepts), Z'Z has O(n) off-diagonals however large q is, and the sparse
+# q-side stays as fast or faster than the dense n-side even for q >> n
+# (benchmarked 2026-07-12: at n = 1000, q = 6000 crossed, q-side ~4 ms vs
+# n-side ~150 ms). The n-side wins when Z is dense -- kernel-, kinship-, or
+# spline-type designs -- where the q-side degenerates to dense q x q algebra
+# (same benchmark: 50-140x in favor of n-side). The density threshold is a
+# heuristic; callers can always force a path via method.
+get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
+                        method = c("auto", "q_side", "n_side")) {
+  method <- match.arg(method)
+  if (method == "auto") {
+    dens <- Matrix::nnzero(Z) / (as.double(nrow(Z)) * ncol(Z))
+    method <- if (ncol(Z) >= nrow(Z) && dens > 0.1) "n_side" else "q_side"
+  }
+  if (method == "n_side") {
+    assertthat::assert_that(is.list(Hlist),
+                            msg = "Hlist is required when method = 'n_side'")
+    n <- nrow(Z)
+    K <- do.call(cbind, lapply(Hlist, function(Hj) {
+      as.matrix(Matrix::tcrossprod(Z %*% Hj, Z))
+    }))
+    if (is.null(K)) K <- matrix(0, n, 0) # r = 1: only the error variance
+    return(list("K" = K, "method" = "n_side"))
+  }
   ZtZ <- methods::as(crossprod(Z), "generalMatrix")
   R <- tryCatch(suppressWarnings(Matrix::chol(Matrix::forceSymmetric(ZtZ))),
                 error = function(e) NULL)
@@ -101,7 +132,8 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL) {
   precomp <- list("XtX" = as.matrix(crossprod(X)),
                   "XtZ" = as.matrix(crossprod(X, Z)),
                   "ZtZ" = ZtZ,
-                  "R" = R)
+                  "R" = R,
+                  "method" = "q_side")
   if (REML) {
     precomp$XtY <- as.vector(crossprod(X, Y))
     precomp$ZtY <- as.vector(crossprod(Z, Y))

@@ -435,3 +435,288 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     Rcpp::Named("beta") = beta_tilde,
     Rcpp::Named("I_b_chol") = U_chol);
 }
+
+//' Log-likelihood via the n-by-n formulation
+//'
+//' Computes the log-likelihood, score vector, and information matrix for the
+//' covariance parameters using dense n-by-n algebra. Intended for models
+//' where the number of random effects \eqn{q} exceeds, or is comparable to,
+//' the number of observations \eqn{n}; see \code{?loglik} for the model and
+//' the q-by-q counterpart.
+//'
+//' @param K Dense \eqn{n \times n(r - 1)} matrix of horizontally concatenated
+//'        \eqn{K_j = Z H_j Z'}. The \eqn{K_j} do not depend on \eqn{\psi} and
+//'        are precomputed once by \code{get_precomp}.
+//' @param psi Vector of length \eqn{r} of covariance parameters; the last
+//'        element is the error variance \eqn{\psi_r}.
+//' @param e Vector of length \eqn{n} of errors, or residuals, \eqn{e = Y - X\beta}.
+//' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
+//' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
+//' @param get_score If \code{TRUE} the score vector is calculated.
+//' @param get_inf If \code{TRUE}, an information matrix is calculated.
+//' @param expected If \code{TRUE}, the expected information is calculated;
+//'        otherwise the observed, or negative Hessian of the log-likelihood.
+//'
+//' @return A list with components \code{value}, \code{score}, and
+//' \code{inf_mat} as in \code{?loglik}, with score and information of
+//' dimension \eqn{p + r}.
+//'
+//' @details Each evaluation forms \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j}
+//' and factorizes it densely, so the cost is \eqn{O(r n^3 + r^2 n^2)},
+//' independent of \eqn{q}.
+//'
+//' Unlike \code{loglik}, feasibility is decided here rather than by the
+//' caller: \eqn{\Sigma} is positive definite iff its Cholesky factorization
+//' succeeds. When \eqn{q \ge n}, \eqn{Z \Psi Z'} alone can be positive
+//' definite, so \eqn{\psi_r > 0} is checked separately. At infeasible
+//' parameters \code{value} is \code{-Inf} (regardless of \code{get_val}) and
+//' score and information are zero.
+//'
+//' @useDynLib reconf, .registration=TRUE
+// [[Rcpp::export]]
+Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
+                    const Eigen::Map<Eigen::VectorXd> psi,
+                    const Eigen::Map<Eigen::VectorXd> e,
+                    const Eigen::Map<Eigen::MatrixXd> X,
+                    const bool get_val = true,
+                    const bool get_score = true,
+                    const bool get_inf = true,
+                    const bool expected = true) {
+  // Define dimensions
+  const int n = e.size();
+  const int p = X.cols();
+  const int r = psi.size();
+
+  // Initialize returns; zeros are also the infeasible-parameter returns
+  double ll = NA_REAL;
+  Eigen::VectorXd S = Eigen::VectorXd::Zero(p + r);
+  Eigen::MatrixXd I = Eigen::MatrixXd::Zero(p + r, p + r);
+
+  // Form Sigma = psi_r I_n + sum_j psi_j K_j
+  Eigen::MatrixXd Sigma = Eigen::MatrixXd::Zero(n, n);
+  for (int jj = 0; jj < r - 1; jj++) {
+    if (psi(jj) != 0.0) { // avoid touching terms that are zero anyway
+      Sigma += psi(jj) * K.middleCols(jj * n, n);
+    }
+  }
+  Sigma.diagonal().array() += psi(r - 1);
+
+  // Feasibility gate: the Cholesky attempt decides positive definiteness of
+  // Sigma. psi_r > 0 must be checked separately because Z Psi Z' alone can
+  // be positive definite when q >= n.
+  Eigen::LLT<Eigen::MatrixXd> llt(Sigma);
+  if (psi(r - 1) <= 0.0 || llt.info() != Eigen::Success) {
+    return Rcpp::List::create(Rcpp::Named("value") = -R_PosInf,
+                              Rcpp::Named("score") = S,
+                              Rcpp::Named("inf_mat") = I);
+  }
+
+  // log det Sigma from the Cholesky diagonal; etilde = Sigma^{-1} e
+  const double ldetS = 2.0 * llt.matrixLLT().diagonal().array().log().sum();
+  Eigen::VectorXd etilde = llt.solve(e);
+
+  if (get_val) {
+    ll = -0.5 * (ldetS + n * log(2.0 * M_PI) + e.dot(etilde));
+  }
+
+  if (!get_score && !get_inf) {
+    return Rcpp::List::create(Rcpp::Named("value") = ll,
+                              Rcpp::Named("score") = S,
+                              Rcpp::Named("inf_mat") = I);
+  }
+
+  // Si = Sigma^{-1}; all trace terms reduce to elementwise sums against Si
+  // or against the products M_j = Si K_j below
+  Eigen::MatrixXd Si = llt.solve(Eigen::MatrixXd::Identity(n, n));
+
+  // Score for beta
+  if (p > 0) {
+    S.head(p) = X.transpose() * etilde;
+  }
+
+  // Score for psi_j: 0.5 (e'Sigma^{-1} K_j Sigma^{-1} e - tr(Sigma^{-1} K_j));
+  // K_j and Si are symmetric so the trace is an elementwise product sum
+  for (int jj = 0; jj < r - 1; jj++) {
+    S(p + jj) = 0.5 * (etilde.dot(K.middleCols(jj * n, n) * etilde) -
+      Si.cwiseProduct(K.middleCols(jj * n, n)).sum());
+  }
+  S(p + r - 1) = 0.5 * (etilde.squaredNorm() - Si.trace());
+
+  if (get_inf) {
+    // Information for beta: X'Sigma^{-1}X (equals the observed block exactly)
+    if (p > 0) {
+      Eigen::MatrixXd W = llt.solve(X);
+      I.topLeftCorner(p, p) = X.transpose() * W;
+    }
+
+    // M_j = Sigma^{-1} K_j, with K_r = I_n for the error variance, so
+    // I(psi_j, psi_k) = 0.5 tr(M_j M_k) uniformly in j, k
+    std::vector<Eigen::MatrixXd> M(r);
+    for (int jj = 0; jj < r - 1; jj++) {
+      M[jj] = Si * K.middleCols(jj * n, n);
+    }
+    M[r - 1] = Si;
+    for (int jj = 0; jj < r; jj++) {
+      for (int ii = 0; ii <= jj; ii++) {
+        I(p + ii, p + jj) = 0.5 * M[ii].cwiseProduct(M[jj].transpose()).sum();
+      }
+    }
+
+    if (!expected) {
+      // Observed information: flip the sign of the deterministic psi block
+      // and add the stochastic terms u_j' Sigma^{-1} u_k, where
+      // u_j = K_j Sigma^{-1} e (u_r = Sigma^{-1} e)
+      I.bottomRightCorner(r, r) = -I.bottomRightCorner(r, r);
+      Eigen::MatrixXd Ue(n, r);
+      for (int jj = 0; jj < r - 1; jj++) {
+        Ue.col(jj) = K.middleCols(jj * n, n) * etilde;
+      }
+      Ue.col(r - 1) = etilde;
+      Eigen::MatrixXd SUe = llt.solve(Ue);
+      I.bottomRightCorner(r, r) += Ue.transpose() * SUe;
+      // Cross terms with beta: X'Sigma^{-1} u_j (zero in expectation)
+      if (p > 0) {
+        I.topRightCorner(p, r) = X.transpose() * SUe;
+      }
+    }
+  }
+  I = I.selfadjointView<Eigen::Upper>();
+  return Rcpp::List::create(Rcpp::Named("value") = ll,
+                            Rcpp::Named("score") = S,
+                            Rcpp::Named("inf_mat") = I);
+}
+
+//' Restricted log-likelihood via the n-by-n formulation
+//'
+//' Computes the restricted log-likelihood, score vector, and information
+//' matrix for the covariance parameters using dense n-by-n algebra; the
+//' n-side counterpart of \code{loglik_res}. See \code{?loglik_n} for when to
+//' prefer this path and \code{?loglik} for the model.
+//'
+//' @param K Dense \eqn{n \times n(r - 1)} matrix of horizontally concatenated
+//'        \eqn{K_j = Z H_j Z'}, precomputed by \code{get_precomp}.
+//' @param psi Vector of length \eqn{r} of covariance parameters; the last
+//'        element is the error variance \eqn{\psi_r}.
+//' @param Y Vector of length \eqn{n} of responses.
+//' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
+//' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
+//' @param get_score If \code{TRUE} the score vector is calculated.
+//' @param get_inf If \code{TRUE}, an information matrix is calculated.
+//'
+//' @return A list with components \code{value}, \code{score}, \code{inf_mat},
+//' \code{beta}, and \code{I_b_chol} as in \code{?loglik_res}.
+//'
+//' @details All quantities are computed from the dense factorization of
+//' \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j} and the projection
+//' \eqn{P = \Sigma^{-1} - \Sigma^{-1} X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}},
+//' formed explicitly as an \eqn{n \times n} matrix: the restricted score is
+//' \eqn{0.5\{e'\Sigma^{-1} K_j \Sigma^{-1} e - tr(P K_j)\}} with
+//' \eqn{e = Y - X\tilde\beta}, and the expected information is
+//' \eqn{0.5 tr(P K_j P K_k)}.
+//'
+//' Feasibility is decided here as in \code{?loglik_n}: at infeasible
+//' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
+//' \code{value} is \code{-Inf} (regardless of \code{get_val}), score and
+//' information are zero, and \code{beta} and \code{I_b_chol} are \code{NA}.
+//'
+//' @useDynLib reconf, .registration=TRUE
+// [[Rcpp::export]]
+Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
+                        const Eigen::Map<Eigen::VectorXd> psi,
+                        const Eigen::Map<Eigen::VectorXd> Y,
+                        const Eigen::Map<Eigen::MatrixXd> X,
+                        const bool get_val = true,
+                        const bool get_score = true,
+                        const bool get_inf = true) {
+  // Define dimensions
+  const int n = Y.size();
+  const int p = X.cols();
+  const int r = psi.size();
+
+  // Initialize returns; zeros/NAs are also the infeasible-parameter returns
+  double ll = NA_REAL;
+  Eigen::VectorXd s_psi = Eigen::VectorXd::Zero(r);
+  Eigen::MatrixXd I_psi = Eigen::MatrixXd::Zero(r, r);
+  Rcpp::List infeasible = Rcpp::List::create(
+    Rcpp::Named("value") = -R_PosInf,
+    Rcpp::Named("score") = s_psi,
+    Rcpp::Named("inf_mat") = I_psi,
+    Rcpp::Named("beta") = Eigen::VectorXd::Constant(p, NA_REAL),
+    Rcpp::Named("I_b_chol") = Eigen::MatrixXd::Constant(p, p, NA_REAL));
+
+  // Form Sigma = psi_r I_n + sum_j psi_j K_j
+  Eigen::MatrixXd Sigma = Eigen::MatrixXd::Zero(n, n);
+  for (int jj = 0; jj < r - 1; jj++) {
+    if (psi(jj) != 0.0) {
+      Sigma += psi(jj) * K.middleCols(jj * n, n);
+    }
+  }
+  Sigma.diagonal().array() += psi(r - 1);
+
+  // Feasibility gate; see ?loglik_n
+  Eigen::LLT<Eigen::MatrixXd> llt(Sigma);
+  if (psi(r - 1) <= 0.0 || llt.info() != Eigen::Success) {
+    return infeasible;
+  }
+
+  const double ldetS = 2.0 * llt.matrixLLT().diagonal().array().log().sum();
+
+  // W = Sigma^{-1} X and U = X'Sigma^{-1}X
+  Eigen::MatrixXd W = llt.solve(X);
+  Eigen::MatrixXd U = X.transpose() * W;
+  U = U.selfadjointView<Eigen::Upper>();
+  Eigen::LLT<Eigen::MatrixXd, Eigen::Upper> llt_U(U);
+  if (llt_U.info() != Eigen::Success) {
+    return infeasible;
+  }
+
+  // GLS coefficient, residuals, and etilde = Sigma^{-1} e = P Y
+  Eigen::VectorXd beta_tilde = llt_U.solve(W.transpose() * Y);
+  Eigen::VectorXd e = Y - X * beta_tilde;
+  Eigen::VectorXd etilde = llt.solve(e);
+
+  if (get_val) {
+    ll = ldetS;
+    ll += 2.0 * llt_U.matrixLLT().diagonal().array().log().sum();
+    ll += e.dot(etilde) + (n - p) * log(2.0 * M_PI);
+    ll *= -0.5;
+  }
+
+  if (get_score || get_inf) {
+    // P = Sigma^{-1} - W U^{-1} W', formed explicitly (n x n, rank-p update)
+    Eigen::MatrixXd P = llt.solve(Eigen::MatrixXd::Identity(n, n));
+    P.noalias() -= W * llt_U.solve(W.transpose());
+
+    // Score for psi_j: 0.5 (etilde' K_j etilde - tr(P K_j)); P and K_j are
+    // symmetric so the trace is an elementwise product sum
+    for (int jj = 0; jj < r - 1; jj++) {
+      s_psi(jj) = 0.5 * (etilde.dot(K.middleCols(jj * n, n) * etilde) -
+        P.cwiseProduct(K.middleCols(jj * n, n)).sum());
+    }
+    s_psi(r - 1) = 0.5 * (etilde.squaredNorm() - P.trace());
+
+    if (get_inf) {
+      // Expected information I(psi_j, psi_k) = 0.5 tr(P K_j P K_k), with
+      // K_r = I_n so that the error variance is handled uniformly
+      std::vector<Eigen::MatrixXd> PK(r);
+      for (int jj = 0; jj < r - 1; jj++) {
+        PK[jj] = P * K.middleCols(jj * n, n);
+      }
+      PK[r - 1] = P;
+      for (int jj = 0; jj < r; jj++) {
+        for (int ii = 0; ii <= jj; ii++) {
+          I_psi(ii, jj) = 0.5 * PK[ii].cwiseProduct(PK[jj].transpose()).sum();
+        }
+      }
+      I_psi = I_psi.selfadjointView<Eigen::Upper>();
+    }
+  }
+
+  Eigen::MatrixXd U_chol = llt_U.matrixU();
+  return Rcpp::List::create(
+    Rcpp::Named("value") = ll,
+    Rcpp::Named("score") = s_psi,
+    Rcpp::Named("inf_mat") = I_psi,
+    Rcpp::Named("beta") = beta_tilde,
+    Rcpp::Named("I_b_chol") = U_chol);
+}

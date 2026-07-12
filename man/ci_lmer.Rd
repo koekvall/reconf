@@ -17,6 +17,7 @@ ci_lmer(
   onestep = FALSE,
   nonneg = TRUE,
   accelerate = TRUE,
+  method = c("auto", "q_side", "n_side"),
   ...
 )
 }
@@ -70,6 +71,9 @@ interval by regula falsi to the resolution of the fixed-step search;
 nuisance warm starts are extrapolated along the accepted path. Typically
 needs 5--10 times fewer profile evaluations per bound. If \code{FALSE},
 every step has length \code{step_size} (the fixed-step search).}
+
+\item{method}{Likelihood computation path, one of \code{"auto"} (default),
+\code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.}
 
 \item{...}{Additional arguments passed to the trust-region optimizer.}
 }

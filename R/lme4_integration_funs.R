@@ -86,14 +86,20 @@ get_Hlist_lmer <- function(lmerfit)
 #' @param Hlist Optional list of structure matrices (see
 #'   \code{\link{get_Hlist_lmer}}); when supplied, their concatenation is
 #'   stored in the result so likelihood evaluations do not rebuild it.
+#' @param method Computational path to precompute for; see
+#'   \code{?loglikelihood}. The default \code{"auto"} picks the dense n-by-n
+#'   path iff \eqn{q \ge n} and \eqn{Z} is dense.
 #'
 #' @return A list containing precomputed cross-products and related quantities:
 #'   \code{XtX}, \code{XtZ}, \code{ZtZ}, \code{R} (sparse Cholesky factor of
 #'   \code{ZtZ}, or \code{NULL} if singular), for REML also \code{XtY} and
-#'   \code{ZtY}, and \code{H} if \code{Hlist} was supplied.
+#'   \code{ZtY}, and \code{H} if \code{Hlist} was supplied. For the n-side
+#'   path, instead the dense matrix \code{K} (see \code{?loglik_n}). Either
+#'   way the list is tagged with \code{method}.
 #'
 #' @keywords internal
-get_precomp_lmer <- function(lmerfit, REML = NULL, Hlist = NULL){
+get_precomp_lmer <- function(lmerfit, REML = NULL, Hlist = NULL,
+                             method = c("auto", "q_side", "n_side")){
   # Validate input
   if (!inherits(lmerfit, "lmerMod")) {
     stop("lmerfit must be an lmerMod object from lme4::lmer")
@@ -110,7 +116,8 @@ get_precomp_lmer <- function(lmerfit, REML = NULL, Hlist = NULL){
 
   m <- .lmer_matrices(lmerfit)
 
-  get_precomp(Y = m$Y, X = m$X, Z = m$Z, REML = REML, Hlist = Hlist)
+  get_precomp(Y = m$Y, X = m$X, Z = m$Z, REML = REML, Hlist = Hlist,
+              method = match.arg(method))
 }
 
 #' Extract estimated covariance parameters from lme4 fit

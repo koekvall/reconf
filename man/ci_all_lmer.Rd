@@ -11,6 +11,7 @@ ci_all_lmer(
   onestep = FALSE,
   nonneg = TRUE,
   accelerate = TRUE,
+  method = c("auto", "q_side", "n_side"),
   ...
 )
 }
@@ -33,6 +34,9 @@ at 0 for variance parameters; see \code{\link{ci_lmer}}.}
 
 \item{accelerate}{Logical. If \code{TRUE} (default), use secant-accelerated
 steps in the outward search; see \code{\link{ci_lmer}}.}
+
+\item{method}{Likelihood computation path, one of \code{"auto"} (default),
+\code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.}
 
 \item{...}{Additional arguments passed to \code{\link{ci_lmer}}.}
 }

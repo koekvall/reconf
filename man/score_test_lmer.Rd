@@ -11,7 +11,8 @@ score_test_lmer(
   efficient = TRUE,
   expected = TRUE,
   profile = TRUE,
-  known_idx = NULL
+  known_idx = NULL,
+  ...
 )
 }
 \arguments{
@@ -41,6 +42,11 @@ under the null hypothesis before computing the test statistic.}
 \code{theta_null} (other than \code{test_idx}) have known values and should
 not be optimized when \code{profile = TRUE}. If \code{NULL}, all parameters
 except \code{test_idx} are treated as nuisance parameters.}
+
+\item{...}{Additional arguments passed to the trust-region optimizer used
+when \code{profile = TRUE}, such as \code{iterlim} (default 1000 here:
+profiling at a distant null can involve many cheap iterations along
+nearly flat directions).}
 }
 \value{
 A named numeric vector with elements:

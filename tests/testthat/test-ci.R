@@ -5,33 +5,59 @@ fit_rs <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRU
 
 # ── ci_lmer ──────────────────────────────────────────────────────────────────
 
-test_that("ci_lmer returns a 1-row matrix with lower and upper columns", {
+test_that("ci_lmer returns a 1-row reconf_ci matrix", {
   skip_on_cran()
   ci <- ci_lmer(fit_ri, test_idx = 1L)
   expect_true(is.matrix(ci))
+  expect_s3_class(ci, "reconf_ci")
   expect_equal(nrow(ci), 1L)
-  expect_equal(colnames(ci), c("lower", "upper"))
+  expect_equal(colnames(ci), c("estimate", "lower", "upper"))
   expect_true(is.numeric(ci))
 })
 
-test_that("ci_lmer: lower < MLE < upper for random intercept variance", {
+test_that("ci_lmer: lower < MLE < upper, and estimate column matches VarCorr", {
   skip_on_cran()
   ci <- ci_lmer(fit_ri, test_idx = 1L)
   mle <- as.data.frame(VarCorr(fit_ri), order = "lower.tri")$vcov[1]
-  expect_lt(ci[1], mle)
-  expect_gt(ci[2], mle)
+  expect_equal(as.numeric(ci[1, "estimate"]), mle)
+  expect_lt(ci[1, "lower"], mle)
+  expect_gt(ci[1, "upper"], mle)
 })
 
 test_that("ci_lmer: lower < upper", {
   skip_on_cran()
   ci <- ci_lmer(fit_ri, test_idx = 1L)
-  expect_lt(ci[1], ci[2])
+  expect_lt(ci[1, "lower"], ci[1, "upper"])
 })
 
 test_that("ci_lmer: lower bound is non-negative for variance parameter", {
   skip_on_cran()
   ci <- ci_lmer(fit_ri, test_idx = 1L)
-  expect_gte(ci[1], 0)
+  expect_gte(ci[1, "lower"], 0)
+})
+
+test_that("print and tidy methods work for confidence intervals", {
+  skip_on_cran()
+  ci <- ci_all_lmer(fit_ri)
+  expect_output(print(ci), "95% score-based confidence intervals \\(REML\\)")
+  td <- tidy(ci)
+  expect_s3_class(td, "data.frame")
+  expect_equal(names(td), c("term", "estimate", "conf.low", "conf.high"))
+  expect_equal(nrow(td), nrow(ci))
+})
+
+test_that("score_test_all_lmer returns a named test table", {
+  skip_on_cran()
+  st <- score_test_all_lmer(fit_rs)
+  expect_s3_class(st, "reconf_test")
+  expect_equal(colnames(st), c("statistic", "df", "p.value"))
+  expect_equal(nrow(st), 3L)  # two variances and one covariance
+  expect_true(all(rownames(st) != ""))
+  expect_true(all(st[, "p.value"] >= 0 & st[, "p.value"] <= 1))
+  expect_true(all(is.finite(st[, "statistic"])))
+  expect_output(print(st), "Score tests of zero covariance parameters")
+  td <- tidy(st)
+  expect_equal(names(td), c("term", "statistic", "df", "p.value"))
 })
 
 test_that("accelerated and fixed-step searches agree", {
@@ -51,8 +77,8 @@ test_that("ci_all_lmer returns matrix with correct dimensions", {
   skip_on_cran()
   ci <- ci_all_lmer(fit_ri)
   expect_true(is.matrix(ci))
-  expect_equal(ncol(ci), 2L)
-  expect_equal(colnames(ci), c("lower", "upper"))
+  expect_equal(ncol(ci), 3L)
+  expect_equal(colnames(ci), c("estimate", "lower", "upper"))
   # random intercept model: 1 RE variance + error variance
   expect_equal(nrow(ci), 2L)
 })
@@ -170,8 +196,8 @@ test_that("prior weights are handled exactly via the W^(1/2) transformation", {
   fitw <- lmer(Reaction ~ Days + (1 | Subject), data = sleepstudy, weights = w)
   ci <- ci_lmer(fitw, test_idx = 1L)
   mle <- as.data.frame(VarCorr(fitw), order = "lower.tri")$vcov[1]
-  expect_lt(ci[1], mle)
-  expect_gt(ci[2], mle)
+  expect_lt(ci[1, "lower"], mle)
+  expect_gt(ci[1, "upper"], mle)
 })
 
 test_that("offsets are subtracted before the analysis", {

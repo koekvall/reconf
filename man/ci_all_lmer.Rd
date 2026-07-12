@@ -37,9 +37,11 @@ steps in the outward search; see \code{\link{ci_lmer}}.}
 \item{...}{Additional arguments passed to \code{\link{ci_lmer}}.}
 }
 \value{
-A matrix with one row per parameter and columns \code{lower} and
-\code{upper}. Row names are of the form \code{"var | grouping_factor"} or
-\code{"var1:var2 | grouping_factor"} for covariance parameters.
+A matrix of class \code{reconf_ci} with one row per parameter and
+columns \code{estimate}, \code{lower}, and \code{upper}. Row names are of
+the form \code{"var | grouping_factor"} or
+\code{"var1:var2 | grouping_factor"} for covariance parameters. Supports
+\code{print} and \code{\link[generics]{tidy}}.
 }
 \description{
 Computes score-based confidence intervals for each covariance parameter in a

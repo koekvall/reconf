@@ -27,6 +27,19 @@ get_idx_ltri <- function(row, col, n)
   0.5 * n * (n + 1) - back_idx + 1
 }
 
+# Human-readable names for covariance parameters, from the data frame
+# as.data.frame(VarCorr(fit), order = "lower.tri"). The residual row has
+# var1 = var2 = NA and is named by grp alone; variance rows have var2 = NA;
+# covariance rows have both variables.
+.param_names <- function(vc, idx = seq_len(nrow(vc))) {
+  vapply(idx, function(i) {
+    if (is.na(vc$var1[i])) return(vc$grp[i])
+    paste0(vc$var1[i],
+           if (is.na(vc$var2[i])) "" else paste0(":", vc$var2[i]),
+           " | ", vc$grp[i])
+  }, character(1))
+}
+
 # Solve A %*% x = b for symmetric A. Tries Cholesky first (fast); falls back
 # to eigendecomposition-based pseudoinverse when A is not positive definite.
 .solve_sym_eigen <- function(A, b, tol = 1e-10) {

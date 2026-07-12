@@ -75,10 +75,9 @@ every step has length \code{step_size} (the fixed-step search).}
 \item{...}{Additional arguments passed to the trust-region optimizer.}
 }
 \value{
-If \code{return_profile = FALSE}, a named numeric vector with
-elements \code{lower} and \code{upper}. If \code{return_profile = TRUE},
-a list with elements \code{ci} (the named vector), \code{null_values}
-(grid of null values evaluated), and \code{stat} (signed score profile).
+A one-row matrix of class \code{reconf_ci} with columns
+\code{estimate}, \code{lower}, and \code{upper}, named by the parameter.
+Supports \code{print} and \code{\link[generics]{tidy}}.
 }
 \description{
 Computes a score-based confidence interval for a single covariance parameter

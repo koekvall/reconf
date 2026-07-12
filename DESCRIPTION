@@ -17,7 +17,7 @@ RoxygenNote: 7.3.3
 Depends:
     R (>= 3.5.0)
 LazyData: true
-Imports: Matrix, lme4, trust, methods, assertthat
+Imports: Matrix, lme4, trust, methods, assertthat, generics
 LinkingTo: Rcpp, RcppEigen
 Suggests: testthat (>= 3.0.0), numDeriv, knitr, rmarkdown
 VignetteBuilder: knitr

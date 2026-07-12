@@ -1,5 +1,14 @@
 # reconf 0.1.1
 
+* `ci_lmer()` and `ci_all_lmer()` now return the estimate alongside the
+  bounds, with a print method stating the level and estimation method, and
+  `tidy()` methods (broom-style) for pipelines.
+* New `score_test_all_lmer()` (formerly internal): per-parameter score tests
+  against zero, with named rows, p-values, print, and `tidy()`. Nuisance
+  parameters now start from their estimates when profiling, which fixes
+  non-convergence on large response scales, and a term-lookup bug affecting
+  covariance parameters in models with correlated random effects was fixed.
+* Added GitHub Actions R CMD check (Linux, macOS, Windows).
 * Fixed: the log-likelihood could be finite at parameters where
   `Sigma = Z Psi Z' + psi_r I` is not positive definite, corrupting CI
   searches. Feasibility is now decided by an exact Cholesky test.

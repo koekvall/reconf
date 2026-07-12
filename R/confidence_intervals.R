@@ -46,10 +46,9 @@
 #'   every step has length \code{step_size} (the fixed-step search).
 #' @param ... Additional arguments passed to the trust-region optimizer.
 #'
-#' @return If \code{return_profile = FALSE}, a named numeric vector with
-#'   elements \code{lower} and \code{upper}. If \code{return_profile = TRUE},
-#'   a list with elements \code{ci} (the named vector), \code{null_values}
-#'   (grid of null values evaluated), and \code{stat} (signed score profile).
+#' @return A one-row matrix of class \code{reconf_ci} with columns
+#'   \code{estimate}, \code{lower}, and \code{upper}, named by the parameter.
+#'   Supports \code{print} and \code{\link[generics]{tidy}}.
 #'
 #' @details
 #' The confidence interval is constructed as the inversion of the one-dimensional
@@ -92,11 +91,12 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
                     onestep = FALSE, nonneg = TRUE, accelerate = TRUE, ...) {
 
   setup <- .ci_setup(lmerfit, REML)
-  .ci_lmer_core(setup, test_idx = test_idx, level = level,
-                step_size = step_size, num_points = num_points,
-                expected = expected, known_idx = known_idx,
-                return_profile = return_profile, onestep = onestep,
-                nonneg = nonneg, accelerate = accelerate, ...)
+  ci <- .ci_lmer_core(setup, test_idx = test_idx, level = level,
+                      step_size = step_size, num_points = num_points,
+                      expected = expected, known_idx = known_idx,
+                      return_profile = return_profile, onestep = onestep,
+                      nonneg = nonneg, accelerate = accelerate, ...)
+  .as_reconf_ci(ci, level = level, REML = setup$REML)
 }
 
 
@@ -121,9 +121,11 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
 #'   steps in the outward search; see \code{\link{ci_lmer}}.
 #' @param ... Additional arguments passed to \code{\link{ci_lmer}}.
 #'
-#' @return A matrix with one row per parameter and columns \code{lower} and
-#'   \code{upper}. Row names are of the form \code{"var | grouping_factor"} or
-#'   \code{"var1:var2 | grouping_factor"} for covariance parameters.
+#' @return A matrix of class \code{reconf_ci} with one row per parameter and
+#'   columns \code{estimate}, \code{lower}, and \code{upper}. Row names are of
+#'   the form \code{"var | grouping_factor"} or
+#'   \code{"var1:var2 | grouping_factor"} for covariance parameters. Supports
+#'   \code{print} and \code{\link[generics]{tidy}}.
 #'
 #' @seealso \code{\link{ci_lmer}}
 #'
@@ -147,12 +149,13 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
 
   if (is.null(test_idx)) test_idx <- seq_len(setup$r)  # All covariance parameters
 
-  do.call(rbind, lapply(test_idx, function(i) {
+  ci <- do.call(rbind, lapply(test_idx, function(i) {
     do.call(.ci_lmer_core,
             c(list(setup = setup, test_idx = i, level = level,
                    onestep = onestep, nonneg = nonneg,
                    accelerate = accelerate), dots))
   }))
+  .as_reconf_ci(ci, level = level, REML = setup$REML)
 }
 
 
@@ -272,25 +275,20 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
             "Consider decreasing step_size or increasing num_points.")
   }
 
-  # Residual row has var1 = var2 = NA; name it by grp alone. Other variance
-  # rows have var2 = NA (single variable). Covariance rows have both present.
-  if (is.na(vc$var1[test_idx])) {
-    param_name <- vc$grp[test_idx]
-  } else {
-    param_name <- paste0(
-      vc$var1[test_idx],
-      ifelse(is.na(vc$var2[test_idx]), "", paste0(":", vc$var2[test_idx])),
-      " | ", vc$grp[test_idx]
-    )
-  }
-
-  ci <- matrix(c(lower, upper), nrow = 1L,
-               dimnames = list(param_name, c("lower", "upper")))
+  ci <- matrix(c(setup$psi_hat[test_idx], lower, upper), nrow = 1L,
+               dimnames = list(.param_names(vc, test_idx),
+                               c("estimate", "lower", "upper")))
 
   if (return_profile)
     warning("return_profile not supported with outward search; returning CI only.")
 
   ci
+}
+
+# Attach the class and display attributes shared by ci_lmer and ci_all_lmer
+.as_reconf_ci <- function(ci, level, REML) {
+  structure(ci, class = c("reconf_ci", class(ci)),
+            level = level, method = if (REML) "REML" else "ML")
 }
 
 

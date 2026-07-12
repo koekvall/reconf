@@ -93,7 +93,7 @@ information for efficient convergence. A warning is issued if the optimization
 does not converge.
 }
 \seealso{
-\code{\link{score_stat}}, \code{\link{score_profile}},
+\code{\link{score_stat}},
 \code{\link{loglikelihood}}, \code{\link[trust]{trust}}
 }
 \keyword{internal}

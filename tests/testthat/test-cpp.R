@@ -99,7 +99,7 @@ test_that("Psi_from_H_cpp and Psi_from_Hlist agree", {
   r       <- length(psi_hat)
 
   Psi_cpp <- reconf:::Psi_from_H_cpp(psi_mr = psi_hat[-r], H = H)
-  Psi_R   <- reconf:::Psi_from_Hlist(psi_mr = psi_hat[-r], Hlist = Hlist)
+  Psi_R   <- Psi_from_Hlist(psi_mr = psi_hat[-r], Hlist = Hlist)
 
   expect_equal(as.matrix(Psi_cpp), as.matrix(Psi_R), tolerance = 1e-12)
 })
@@ -124,7 +124,7 @@ test_that("C++ and R log-likelihood values agree at MLE (ML)", {
   Z     <- getME(fit, "Z")
   Psi_r <- reconf:::Psi_from_H_cpp(psi_mr = psi_hat[-r], H = H) / psi_hat[r]
 
-  ll_R <- reconf:::loglik_psi(
+  ll_R <- loglik_psi(
     Z = Z,
     ZtZXe = crossprod(Z, cbind(Z, getME(fit, "X"), e)),
     e = e, H = H, Psi_r = Psi_r, psi_r = psi_hat[r],
@@ -151,7 +151,7 @@ test_that("C++ and R restricted log-likelihood values agree at MLE (REML)", {
     get_val = TRUE, get_score = FALSE, get_inf = FALSE
   )$value
 
-  ll_R <- reconf:::res_ll(
+  ll_R <- res_ll(
     XtX = crossprod(X), XtY = crossprod(X, Y),
     XtZ = crossprod(X, Z), ZtZ = crossprod(Z),
     ZtY = crossprod(Z, Y),
@@ -226,7 +226,7 @@ test_that("C++ and R score vectors agree at MLE (REML)", {
     get_val = FALSE, get_score = TRUE, get_inf = FALSE
   )$score
 
-  score_R <- reconf:::res_ll(
+  score_R <- res_ll(
     XtX = crossprod(X), XtY = crossprod(X, Y),
     XtZ = crossprod(X, Z), ZtZ = crossprod(Z),
     ZtY = crossprod(Z, Y),

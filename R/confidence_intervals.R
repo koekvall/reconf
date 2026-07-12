@@ -23,8 +23,7 @@
 #' @param expected Logical. If \code{TRUE} (default), use expected Fisher
 #'   information.
 #' @param known_idx Integer vector or \code{NULL}. Covariance parameters to
-#'   treat as fixed (known) when profiling over nuisance parameters. See
-#'   \code{\link{score_profile}} for details.
+#'   treat as fixed (known) when profiling over nuisance parameters.
 #' @param return_profile Logical. Currently unused; reserved for future use.
 #' @param onestep Logical. If \code{FALSE} (default), nuisance parameters are
 #'   fully optimized at each outward step using the trust-region algorithm. If
@@ -57,12 +56,12 @@
 #' where \eqn{T_n} is the signed score statistic and \eqn{z_{1-\alpha/2}} is the
 #' corresponding standard normal quantile.
 #'
-#' The signed score profile is evaluated on a uniform grid around the MLE, with
-#' nuisance parameters optimized at each grid point using warm starts (see
-#' \code{\link{score_profile}}). CI bounds are then found by linear interpolation
-#' between adjacent grid points that bracket the \eqn{\pm z_{1-\alpha/2}}
-#' crossings. Increase \code{num_points} or \code{search_radius} if a warning is
-#' issued about the profile not crossing the critical value.
+#' The signed score statistic is evaluated along an outward search from the
+#' MLE, with nuisance parameters optimized at each step from the previous
+#' step's solution (see \code{accelerate}). The CI bound is located where the
+#' statistic crosses \eqn{\pm z_{1-\alpha/2}}. Increase \code{num_points} or
+#' \code{step_size} if a warning is issued about the statistic not crossing
+#' the critical value.
 #'
 #' Prior weights and offsets in the \code{lmer} fit are supported: the model
 #' is transformed to unit error variance by scaling \code{Y}, \code{X}, and
@@ -71,7 +70,7 @@
 #' in \code{lme4}, \code{psi[r]} is then the unit error variance, and
 #' observation \eqn{i} has error variance \eqn{\psi_r / w_i}.
 #'
-#' @seealso \code{\link{ci_all_lmer}}, \code{\link{score_profile}}
+#' @seealso \code{\link{ci_all_lmer}}
 #'
 #' @examples
 #' \donttest{

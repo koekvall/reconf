@@ -71,3 +71,9 @@ The parameter ordering follows `as.data.frame(VarCorr(fit), order = "lower.tri")
   Confidence regions near singular information and boundary points with
   applications to mixed models. *The Annals of Statistics* 50(3), 1806–1832.
   [doi:10.1214/22-AOS2177](https://doi.org/10.1214/22-AOS2177)
+
+## Related software
+
+[lmmvar](https://github.com/yqzhang5972/lmmvar) implements the method of
+Zhang, Ekvall, and Molstad (2025) for a single variance component; `reconf`
+covers all covariance parameters in models fitted with lme4.

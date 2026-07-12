@@ -99,8 +99,10 @@ interval of particular interest.
 ## Score-based confidence intervals
 
 `ci_all_lmer()` computes score-based 95% confidence intervals for all
-covariance parameters (the error variance is excluded by default).  The
-parameters are indexed in lower-triangular order: $\psi_{1}$,
+covariance parameters, including the error variance.  Each row is labeled
+by the corresponding variance or covariance and shows the estimate
+alongside the bounds; the random-effect parameters appear in
+lower-triangular order, so `test_idx = 1, 2, 3` refer to $\psi_{1}$,
 $\psi_{2}$, $\psi_{3}$.
 
 ```{r ci-all, cache = TRUE}
@@ -129,20 +131,30 @@ The `.sig01` and `.sig03` rows are standard deviations ($\sqrt{\psi_{1}}$
 and $\sqrt{\psi_{3}}$); `.sig02` is the correlation
 $\psi_{2}/\sqrt{\psi_{1}\psi_{3}}$.
 
-## Score test for no random slope
+## Score tests
 
-`score_test_lmer()` tests whether the random effects for age contribute
-nothing, i.e., $H_0: \psi_{2} = \psi_{3} = 0$.  When $\psi_{3} = 0$,
-the slope $U_{i2}$ is identically zero, which forces $\psi_{2} = 0$ as well;
-both must be set to zero in the null.  With REML, the null vector covers only
-the three covariance parameters and $\psi_{4}$.
+The intervals above are the package's main purpose; the same machinery also
+yields score tests, which we include for completeness.
+`score_test_all_lmer()` tests each covariance parameter against zero,
+profiling over the remaining parameters.
 
-```{r score-test}
+```{r score-test-all, cache = TRUE}
 fit_reml <- lmer(
   logfev1 ~ age + ht + baseage + baseht + (age | id),
   data = fev1, REML = TRUE,
   control = lmerControl(optimizer = "bobyqa")
 )
+score_test_all_lmer(fit_reml)
+```
+
+`score_test_lmer()` tests joint hypotheses at a user-supplied null.  For
+example, that the random effects for age contribute nothing:
+$H_0: \psi_{2} = \psi_{3} = 0$.  When $\psi_{3} = 0$, the slope $U_{i2}$
+is identically zero, which forces $\psi_{2} = 0$ as well; both must be set
+to zero in the null.  With REML, the null vector covers only the three
+covariance parameters and $\psi_{4}$.
+
+```{r score-test, cache = TRUE}
 vc <- as.data.frame(VarCorr(fit_reml), order = "lower.tri")
 # Null: psi_2 = psi_3 = 0; psi_1 and psi_4 at estimates
 theta_null_reml <- c(vc$vcov[1], 0, 0, sigma(fit_reml)^2)

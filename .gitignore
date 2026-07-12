@@ -88,3 +88,9 @@ Meta
 .Rproj.user
 /doc/
 /Meta/
+
+# knitr figure directories from vignette builds (pattern above is root-only)
+vignettes/*_files/
+
+# Local Claude Code settings
+.claude/

@@ -1,31 +1,48 @@
-# reconf 0.1.1
+# reconf 0.2.0
 
-* `ci_lmer()` and `ci_all_lmer()` now return the estimate alongside the
-  bounds, with a print method stating the level and estimation method, and
-  `tidy()` methods (broom-style) for pipelines.
-* New `score_test_all_lmer()` (formerly internal): per-parameter score tests
-  against zero, with named rows, p-values, print, and `tidy()`. Nuisance
-  parameters now start from their estimates when profiling, which fixes
-  non-convergence on large response scales, and a term-lookup bug affecting
-  covariance parameters in models with correlated random effects was fixed.
-* Added GitHub Actions R CMD check (Linux, macOS, Windows).
-* Fixed: the log-likelihood could be finite at parameters where
+## New features
+
+* New exported `score_test_all_lmer()`: per-parameter score tests against
+  zero, with named rows, p-values, and `print`/`tidy` methods.
+* `ci_lmer()` and `ci_all_lmer()` gain prior-weight and offset support,
+  handled exactly by transforming Y, X, and Z with the square-root weights.
+* New `accelerate` argument (default `TRUE`) for a secant-accelerated
+  outward search; set `FALSE` for the previous fixed-step search.
+* `tidy()` methods (broom-style) and `print` methods for the confidence
+  interval and score-test objects.
+
+## Changes that may affect existing code
+
+* `ci_lmer()` and `ci_all_lmer()` now return an object of class
+  `reconf_ci` with an added `estimate` column (columns `estimate`,
+  `lower`, `upper`). Code that indexed the previous two-column output by
+  position should select columns by name.
+* The log-likelihood value now includes all normalizing constants and
+  equals `logLik()` from an equivalent lme4 fit (weighted fits: up to
+  half the sum of log weights).
+
+## Bug fixes
+
+* The log-likelihood could be finite at parameters where
   `Sigma = Z Psi Z' + psi_r I` is not positive definite, corrupting CI
   searches. Feasibility is now decided by an exact Cholesky test.
-* Fixed: models with prior weights or an offset silently used the unweighted
-  likelihood. They are now handled exactly by transforming Y, X, and Z with
-  the square-root weights.
-* The log-likelihood value now includes all constants and equals `logLik()`
-  from lme4 (weighted fits: up to half the sum of log weights).
-* Large speedups; `ci_all_lmer()` on the FEV1 example runs in 0.6 s instead
-  of 43 s, with identical intervals. Main changes: sparsity-aware solves via
-  Matrix, no dense q x q matrices in the restricted information, cached
-  symbolic factorizations, reuse of precomputed quantities, and a
-  secant-accelerated outward CI search (`accelerate = FALSE` restores the
-  fixed-step search; both resolve bounds to within SE/40).
-* Internal `loglik()` and `loglik_res()` now take the matrix A and its
-  log-determinant as arguments; consistent return names in `res_ll()`;
-  documentation fixes.
+* Score tests of covariance parameters in correlated-random-effect models
+  used a wrong term lookup; profiling now also starts nuisance parameters
+  from their estimates, fixing non-convergence on large response scales.
+
+## Performance
+
+* Large speedups; `ci_all_lmer()` on the FEV1 example runs in about 0.6 s
+  instead of 43 s, with identical intervals. Sparsity-aware solves via
+  Matrix, no dense q-by-q matrices in the restricted information, cached
+  symbolic factorizations, and reuse of precomputed quantities.
+
+## Infrastructure
+
+* GitHub Actions R CMD check (Linux, macOS, Windows).
+* Internal `loglik()` and `loglik_res()` take the matrix A and its
+  log-determinant as arguments. Dead code removed and pure-R reference
+  implementations moved to the test suite.
 
 # reconf 0.1
 

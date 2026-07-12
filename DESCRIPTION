@@ -1,6 +1,6 @@
 Package: reconf
 Title: Confidence Intervals for Random Effect Parameters in Linear Mixed Models
-Version: 0.1.1
+Version: 0.2.0
 Authors@R: c(
     person("Karl Oskar", "Ekvall", email = "k.o.ekvall@gmail.com",
     role = c("aut", "cre")),

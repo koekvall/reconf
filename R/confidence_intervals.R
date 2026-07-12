@@ -24,7 +24,6 @@
 #'   information.
 #' @param known_idx Integer vector or \code{NULL}. Covariance parameters to
 #'   treat as fixed (known) when profiling over nuisance parameters.
-#' @param return_profile Logical. Currently unused; reserved for future use.
 #' @param onestep Logical. If \code{FALSE} (default), nuisance parameters are
 #'   fully optimized at each outward step using the trust-region algorithm. If
 #'   \code{TRUE}, a single Newton step is taken from the warm-start instead.
@@ -89,7 +88,7 @@
 #' @export
 ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
                     num_points = 500L, REML = NULL, expected = TRUE,
-                    known_idx = NULL, return_profile = FALSE,
+                    known_idx = NULL,
                     onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
                     method = c("auto", "q_side", "n_side", "spectral"), ...) {
 
@@ -97,7 +96,7 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
   ci <- .ci_lmer_core(setup, test_idx = test_idx, level = level,
                       step_size = step_size, num_points = num_points,
                       expected = expected, known_idx = known_idx,
-                      return_profile = return_profile, onestep = onestep,
+                      onestep = onestep,
                       nonneg = nonneg, accelerate = accelerate, ...)
   .as_reconf_ci(ci, level = level, REML = setup$REML)
 }
@@ -172,8 +171,7 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
 # method selects the likelihood path (see ?loglikelihood); the precomp built
 # here carries the choice to every downstream likelihood evaluation.
 .ci_setup <- function(lmerfit, REML = NULL, method = "auto") {
-  if (!inherits(lmerfit, "lmerMod"))
-    stop("lmerfit must be an lmerMod object from lme4::lmer")
+  .check_lmerfit(lmerfit)
   if (is.null(REML)) REML <- lme4::getME(lmerfit, "REML") != 0
 
   m       <- .lmer_matrices(lmerfit)  # offset and prior weights applied
@@ -200,7 +198,7 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
 # Compute the CI for one parameter given a prebuilt setup; see ci_lmer.
 .ci_lmer_core <- function(setup, test_idx, level = 0.95, step_size = NULL,
                           num_points = 500L, expected = TRUE,
-                          known_idx = NULL, return_profile = FALSE,
+                          known_idx = NULL,
                           onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
                           ...) {
 
@@ -222,6 +220,15 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
     msg = paste0("test_idx must not exceed the number of covariance parameters (",
                  setup$r, ")")
   )
+  # Arguments in ... are forwarded to the trust-region optimizer. An unknown
+  # name must be rejected here: inside the search it would error at every
+  # evaluation, and those errors are swallowed as infeasible points.
+  bad_dots <- setdiff(names(list(...)),
+                      c(names(formals(trust::trust)),
+                        names(formals(maximize_loglik))))
+  if (length(bad_dots) > 0) {
+    stop("unused argument(s): ", paste(bad_dots, collapse = ", "))
+  }
 
   REML <- setup$REML
   p    <- setup$p
@@ -284,14 +291,9 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
             "Consider decreasing step_size or increasing num_points.")
   }
 
-  ci <- matrix(c(setup$psi_hat[test_idx], lower, upper), nrow = 1L,
-               dimnames = list(.param_names(vc, test_idx),
-                               c("estimate", "lower", "upper")))
-
-  if (return_profile)
-    warning("return_profile not supported with outward search; returning CI only.")
-
-  ci
+  matrix(c(setup$psi_hat[test_idx], lower, upper), nrow = 1L,
+         dimnames = list(.param_names(vc, test_idx),
+                         c("estimate", "lower", "upper")))
 }
 
 # Attach the class and display attributes shared by ci_lmer and ci_all_lmer

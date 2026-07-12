@@ -182,3 +182,91 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
   precomp
 }
 
+# Stop unless the argument is a fitted lmer model
+.check_lmerfit <- function(lmerfit) {
+  if (!inherits(lmerfit, "lmerMod")) {
+    stop("lmerfit must be an lmerMod object from lme4::lmer")
+  }
+  invisible(TRUE)
+}
+
+# Shared validation for entry points taking a full parameter vector
+# (maximize_loglik, score_stat): model arguments, single-logical flags, and
+# the parameter vector, whose length must be r under REML and p + r
+# otherwise. flags is a named list of the logical arguments to check.
+.check_lmm_args <- function(theta, theta_name, Y, X, Z, Hlist, REML, precomp,
+                            flags) {
+  assertthat::assert_that(is.vector(theta, mode = "numeric"),
+                          length(theta) > 0,
+                          msg = paste(theta_name, "should be a numeric",
+                                      "vector of positive length"))
+
+  assertthat::assert_that(is.vector(Y, mode = "numeric"), length(Y) > 0,
+                          msg = paste("Y should be a numeric vector of",
+                                      "positive length"))
+
+  assertthat::assert_that(is.matrix(X), nrow(X) == length(Y),
+                          msg = paste("X should be a matrix with",
+                                      "nrow(X) == length(Y)"))
+
+  assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == length(Y),
+                          ncol(Z) > 0,
+                          msg = paste("Z should be a sparse matrix with",
+                                      "nrow(Z) == length(Y) and ncol(Z) > 0"))
+
+  assertthat::assert_that(is.list(Hlist), length(Hlist) > 0,
+                          all(sapply(Hlist, methods::is, "sparseMatrix")),
+                          msg = "Hlist should be a list of sparse matrices")
+
+  for (nm in names(flags)) {
+    assertthat::assert_that(is.logical(flags[[nm]]), length(flags[[nm]]) == 1,
+                            msg = paste(nm, "should be a single logical value"))
+  }
+
+  assertthat::assert_that(is.null(precomp) || is.list(precomp),
+                          msg = "precomp should be NULL or a list")
+
+  expected_length <- length(Hlist) + 1 + if (REML) 0 else ncol(X)
+  assertthat::assert_that(length(theta) == expected_length,
+                          msg = paste0(theta_name, " should have length ",
+                                       expected_length, " (",
+                                       if (REML) "r" else "p + r",
+                                       " for REML = ", REML, ")"))
+  invisible(TRUE)
+}
+
+# Validate a vector of indices into a parameter vector of length n_par
+.check_idx <- function(idx, idx_name, n_par, unique = FALSE) {
+  assertthat::assert_that(is.vector(idx, mode = "numeric"), length(idx) > 0,
+                          all(idx == floor(idx)), all(idx > 0),
+                          msg = paste(idx_name, "should be a vector of",
+                                      "positive integers"))
+  assertthat::assert_that(max(idx) <= n_par,
+                          msg = paste0(idx_name, " values must not exceed ",
+                                       n_par))
+  if (unique) {
+    assertthat::assert_that(length(unique(idx)) == length(idx),
+                            msg = paste(idx_name, "should not contain",
+                                        "duplicate values"))
+  }
+  invisible(TRUE)
+}
+
+# Shared setup for the score-test entry points: validate a user-supplied
+# theta_null length and default test_idx to all random-effect parameters
+.check_theta_null <- function(theta_null, REML, p, r) {
+  expected_length <- if (REML) r else p + r
+  if (length(theta_null) != expected_length) {
+    stop("theta_null should have length ", expected_length,
+         " (", if (REML) "r" else "p + r", " for REML = ", REML, ")")
+  }
+  invisible(TRUE)
+}
+
+.setup_test_idx <- function(test_idx, REML, p, r) {
+  if (is.null(test_idx)) {
+    test_idx <- if (REML) seq_len(r - 1) else (p + 1):(p + r - 1)
+  }
+  if (length(test_idx) == 0) stop("test_idx must have length > 0")
+  test_idx
+}

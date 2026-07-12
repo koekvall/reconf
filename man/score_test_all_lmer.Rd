@@ -51,13 +51,6 @@ every parameter, so variance rows test whether the corresponding random
 effect is needed and covariance rows test zero covariance.
 }
 \details{
-For each parameter specified in \code{test_idx}, this function:
-\enumerate{
-\item Sets up a null hypothesis with that parameter at its null value
-\item Profiles over all other parameters to maximize the likelihood under the null
-\item Computes the score test statistic
-}
-
 When testing covariance parameters (off-diagonal elements), the function ensures
 that the starting values for optimization yield a positive semi-definite covariance
 matrix by appropriately adjusting the corresponding variance parameters.

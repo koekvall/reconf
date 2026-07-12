@@ -13,7 +13,6 @@ ci_lmer(
   REML = NULL,
   expected = TRUE,
   known_idx = NULL,
-  return_profile = FALSE,
   onestep = FALSE,
   nonneg = TRUE,
   accelerate = TRUE,
@@ -48,8 +47,6 @@ information.}
 
 \item{known_idx}{Integer vector or \code{NULL}. Covariance parameters to
 treat as fixed (known) when profiling over nuisance parameters.}
-
-\item{return_profile}{Logical. Currently unused; reserved for future use.}
 
 \item{onestep}{Logical. If \code{FALSE} (default), nuisance parameters are
 fully optimized at each outward step using the trust-region algorithm. If

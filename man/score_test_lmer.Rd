@@ -59,15 +59,6 @@ Computes a score test statistic for a linear mixed model fitted using lme4::lmer
 This is a convenience wrapper around \code{\link{score_stat}} that extracts the
 necessary components from an lmerMod object.
 }
-\details{
-This function provides a convenient interface for score testing in lme4 fits.
-It automatically extracts the model matrices, variance structure, and other
-components needed by \code{\link{score_stat}}.
-
-When \code{profile = TRUE}, the function uses \code{\link{maximize_loglik}} to
-optimize nuisance parameters under the null hypothesis before computing the test
-statistic. This typically yields more powerful tests.
-}
 \examples{
 library(lme4)
 fit <- lmer(Reaction ~ Days + (1 | Subject), data = sleepstudy)

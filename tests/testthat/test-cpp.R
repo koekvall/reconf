@@ -1,24 +1,41 @@
 library(lme4)
 library(Matrix)
 
+# All tests use the sleepstudy random-slope model. Fits and extracted
+# components are shared across tests; Y, X, Z, and Hlist are identical for
+# the ML and REML fits.
+fit_ml   <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy,
+                 REML = FALSE)
+fit_reml <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy,
+                 REML = TRUE)
+Y <- getME(fit_ml, "y"); X <- getME(fit_ml, "X"); Z <- getME(fit_ml, "Z")
+Hlist    <- reconf:::get_Hlist_lmer(fit_ml)
+H        <- do.call(cbind, Hlist)
+psi_ml   <- reconf:::get_psi_hat_lmer(fit_ml)
+b_ml     <- getME(fit_ml, "beta")
+psi_reml <- reconf:::get_psi_hat_lmer(fit_reml)
+r        <- length(psi_ml)
+
+val_ml <- function(psi) {
+  reconf:::loglikelihood(psi = psi, b = b_ml, Y = Y, X = X, Z = Z,
+                         Hlist = Hlist, REML = FALSE,
+                         get_val = TRUE, get_score = FALSE,
+                         get_inf = FALSE)$value
+}
+
+val_reml <- function(psi) {
+  reconf:::loglikelihood(psi = psi, Y = Y, X = X, Z = Z, Hlist = Hlist,
+                         REML = TRUE, get_val = TRUE, get_score = FALSE,
+                         get_inf = FALSE)$value
+}
+
 # ── Numerical derivative checks ───────────────────────────────────────────────
 
 test_that("analytical ML score for psi agrees with numerical gradient", {
   skip_on_cran()
   skip_if_not_installed("numDeriv")
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = FALSE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  b_hat   <- getME(fit, "beta")
-  Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
-  Hlist <- reconf:::get_Hlist_lmer(fit)
-
-  ll_fun <- function(psi) {
-    reconf:::loglikelihood(psi = psi, b = b_hat, Y = Y, X = X, Z = Z,
-                           Hlist = Hlist, REML = FALSE,
-                           get_val = TRUE, get_score = FALSE, get_inf = FALSE)$value
-  }
-  num_score <- numDeriv::grad(ll_fun, psi_hat)
-  ana_score <- reconf:::loglikelihood(psi = psi_hat, b = b_hat, Y = Y, X = X,
+  num_score <- numDeriv::grad(val_ml, psi_ml)
+  ana_score <- reconf:::loglikelihood(psi = psi_ml, b = b_ml, Y = Y, X = X,
                                       Z = Z, Hlist = Hlist, REML = FALSE,
                                       get_val = FALSE, get_score = TRUE,
                                       get_inf = FALSE)$score
@@ -28,19 +45,8 @@ test_that("analytical ML score for psi agrees with numerical gradient", {
 test_that("analytical ML observed information agrees with negative numerical Hessian", {
   skip_on_cran()
   skip_if_not_installed("numDeriv")
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = FALSE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  b_hat   <- getME(fit, "beta")
-  Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
-  Hlist <- reconf:::get_Hlist_lmer(fit)
-
-  ll_fun <- function(psi) {
-    reconf:::loglikelihood(psi = psi, b = b_hat, Y = Y, X = X, Z = Z,
-                           Hlist = Hlist, REML = FALSE,
-                           get_val = TRUE, get_score = FALSE, get_inf = FALSE)$value
-  }
-  num_hess <- -numDeriv::hessian(ll_fun, psi_hat)
-  ana_hess <- reconf:::loglikelihood(psi = psi_hat, b = b_hat, Y = Y, X = X,
+  num_hess <- -numDeriv::hessian(val_ml, psi_ml)
+  ana_hess <- reconf:::loglikelihood(psi = psi_ml, b = b_ml, Y = Y, X = X,
                                      Z = Z, Hlist = Hlist, REML = FALSE,
                                      get_val = FALSE, get_score = FALSE,
                                      get_inf = TRUE, expected = FALSE)$inf_mat
@@ -50,18 +56,8 @@ test_that("analytical ML observed information agrees with negative numerical Hes
 test_that("analytical REML score agrees with numerical gradient", {
   skip_on_cran()
   skip_if_not_installed("numDeriv")
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
-  Hlist <- reconf:::get_Hlist_lmer(fit)
-
-  ll_fun <- function(psi) {
-    reconf:::loglikelihood(psi = psi, Y = Y, X = X, Z = Z, Hlist = Hlist,
-                           REML = TRUE, get_val = TRUE, get_score = FALSE,
-                           get_inf = FALSE)$value
-  }
-  num_score <- numDeriv::grad(ll_fun, psi_hat)
-  ana_score <- reconf:::loglikelihood(psi = psi_hat, Y = Y, X = X, Z = Z,
+  num_score <- numDeriv::grad(val_reml, psi_reml)
+  ana_score <- reconf:::loglikelihood(psi = psi_reml, Y = Y, X = X, Z = Z,
                                       Hlist = Hlist, REML = TRUE,
                                       get_val = FALSE, get_score = TRUE,
                                       get_inf = FALSE)$score
@@ -71,18 +67,8 @@ test_that("analytical REML score agrees with numerical gradient", {
 test_that("analytical REML expected information agrees with negative numerical Hessian", {
   skip_on_cran()
   skip_if_not_installed("numDeriv")
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
-  Hlist <- reconf:::get_Hlist_lmer(fit)
-
-  ll_fun <- function(psi) {
-    reconf:::loglikelihood(psi = psi, Y = Y, X = X, Z = Z, Hlist = Hlist,
-                           REML = TRUE, get_val = TRUE, get_score = FALSE,
-                           get_inf = FALSE)$value
-  }
-  num_hess <- -numDeriv::hessian(ll_fun, psi_hat)
-  ana_hess <- reconf:::loglikelihood(psi = psi_hat, Y = Y, X = X, Z = Z,
+  num_hess <- -numDeriv::hessian(val_reml, psi_reml)
+  ana_hess <- reconf:::loglikelihood(psi = psi_reml, Y = Y, X = X, Z = Z,
                                      Hlist = Hlist, REML = TRUE,
                                      get_val = FALSE, get_score = FALSE,
                                      get_inf = TRUE, expected = TRUE)$inf_mat
@@ -92,42 +78,27 @@ test_that("analytical REML expected information agrees with negative numerical H
 # ── R and C++ implementations agree ──────────────────────────────────────────
 
 test_that("Psi_from_H_cpp and Psi_from_Hlist agree", {
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = FALSE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  Hlist   <- reconf:::get_Hlist_lmer(fit)
-  H       <- do.call(cbind, Hlist)
-  r       <- length(psi_hat)
-
-  Psi_cpp <- reconf:::Psi_from_H_cpp(psi_mr = psi_hat[-r], H = H)
-  Psi_R   <- Psi_from_Hlist(psi_mr = psi_hat[-r], Hlist = Hlist)
+  Psi_cpp <- reconf:::Psi_from_H_cpp(psi_mr = psi_ml[-r], H = H)
+  Psi_R   <- Psi_from_Hlist(psi_mr = psi_ml[-r], Hlist = Hlist)
 
   expect_equal(as.matrix(Psi_cpp), as.matrix(Psi_R), tolerance = 1e-12)
 })
 
 test_that("C++ and R log-likelihood values agree at MLE (ML)", {
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = FALSE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  b_hat   <- getME(fit, "beta")
-  Hlist   <- reconf:::get_Hlist_lmer(fit)
-
   ll_cpp <- reconf:::loglikelihood(
-    psi = psi_hat, b = b_hat,
-    Y = getME(fit, "y"), X = getME(fit, "X"), Z = getME(fit, "Z"),
+    psi = psi_ml, b = b_ml, Y = Y, X = X, Z = Z,
     Hlist = Hlist, REML = FALSE,
     get_val = TRUE, get_score = FALSE, get_inf = FALSE
   )$value
 
   # R implementation
-  H     <- do.call(cbind, Hlist)
-  r     <- length(psi_hat)
-  e     <- getME(fit, "y") - getME(fit, "X") %*% b_hat
-  Z     <- getME(fit, "Z")
-  Psi_r <- reconf:::Psi_from_H_cpp(psi_mr = psi_hat[-r], H = H) / psi_hat[r]
+  e     <- Y - X %*% b_ml
+  Psi_r <- reconf:::Psi_from_H_cpp(psi_mr = psi_ml[-r], H = H) / psi_ml[r]
 
   ll_R <- loglik_psi(
     Z = Z,
-    ZtZXe = crossprod(Z, cbind(Z, getME(fit, "X"), e)),
-    e = e, H = H, Psi_r = Psi_r, psi_r = psi_hat[r],
+    ZtZXe = crossprod(Z, cbind(Z, X, e)),
+    e = e, H = H, Psi_r = Psi_r, psi_r = psi_ml[r],
     get_val = TRUE, get_score = FALSE, get_inf = FALSE
   )$value
 
@@ -135,18 +106,10 @@ test_that("C++ and R log-likelihood values agree at MLE (ML)", {
 })
 
 test_that("C++ and R restricted log-likelihood values agree at MLE (REML)", {
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  Hlist   <- reconf:::get_Hlist_lmer(fit)
-  H       <- do.call(cbind, Hlist)
-  r       <- length(psi_hat)
-  Y       <- getME(fit, "y")
-  X       <- getME(fit, "X")
-  Z       <- getME(fit, "Z")
-  Psi_r   <- reconf:::Psi_from_H_cpp(psi_mr = psi_hat[-r], H = H) / psi_hat[r]
+  Psi_r <- reconf:::Psi_from_H_cpp(psi_mr = psi_reml[-r], H = H) / psi_reml[r]
 
   ll_cpp <- reconf:::loglikelihood(
-    psi = psi_hat,
+    psi = psi_reml,
     Y = Y, X = X, Z = Z, Hlist = Hlist, REML = TRUE,
     get_val = TRUE, get_score = FALSE, get_inf = FALSE
   )$value
@@ -156,7 +119,7 @@ test_that("C++ and R restricted log-likelihood values agree at MLE (REML)", {
     XtZ = crossprod(X, Z), ZtZ = crossprod(Z),
     ZtY = crossprod(Z, Y),
     Y = Y, X = X, Z = Z, H = H,
-    Psi_r = Psi_r, psi_r = psi_hat[r],
+    Psi_r = Psi_r, psi_r = psi_reml[r],
     get_val = TRUE, get_score = FALSE, get_inf = FALSE
   )$value
 
@@ -168,17 +131,11 @@ test_that("log-likelihood is -Inf when Sigma is not positive definite", {
   # boundary together: the determinant of I + Psi_r Z'Z stays positive at
   # infeasible parameters and a determinant sign check alone cannot detect
   # them. Guards the Cholesky-based gate in loglikelihood.
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = FALSE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  b_hat   <- as.vector(getME(fit, "beta"))
-  Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
-  Hlist <- reconf:::get_Hlist_lmer(fit)
-
-  psi_bad <- psi_hat
+  psi_bad <- psi_ml
   psi_bad[1] <- -1e6  # Sigma indefinite; det(I + Psi_r Z'Z) still positive
 
-  ll_ml <- reconf:::loglikelihood(psi = psi_bad, b = b_hat, Y = Y, X = X, Z = Z,
-                                  Hlist = Hlist, REML = FALSE,
+  ll_ml <- reconf:::loglikelihood(psi = psi_bad, b = as.vector(b_ml), Y = Y,
+                                  X = X, Z = Z, Hlist = Hlist, REML = FALSE,
                                   get_val = TRUE, get_score = FALSE,
                                   get_inf = FALSE)
   expect_identical(ll_ml$value, -Inf)
@@ -190,8 +147,8 @@ test_that("log-likelihood is -Inf when Sigma is not positive definite", {
   expect_identical(ll_reml$value, -Inf)
 
   # Nonpositive error variance is infeasible
-  psi_bad2 <- psi_hat
-  psi_bad2[4] <- 0
+  psi_bad2 <- psi_ml
+  psi_bad2[r] <- 0
   ll0 <- reconf:::loglikelihood(psi = psi_bad2, Y = Y, X = X, Z = Z,
                                 Hlist = Hlist, REML = TRUE,
                                 get_val = TRUE, get_score = FALSE,
@@ -200,7 +157,7 @@ test_that("log-likelihood is -Inf when Sigma is not positive definite", {
 
   # A mildly negative variance parameter can still give Sigma PD; the gate
   # must not reject it (the parameter space is Sigma PD, not Psi PSD)
-  psi_ok <- psi_hat
+  psi_ok <- psi_ml
   psi_ok[1] <- -20
   ll_ok <- reconf:::loglikelihood(psi = psi_ok, Y = Y, X = X, Z = Z,
                                   Hlist = Hlist, REML = TRUE,
@@ -210,18 +167,10 @@ test_that("log-likelihood is -Inf when Sigma is not positive definite", {
 })
 
 test_that("C++ and R score vectors agree at MLE (REML)", {
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  Hlist   <- reconf:::get_Hlist_lmer(fit)
-  H       <- do.call(cbind, Hlist)
-  r       <- length(psi_hat)
-  Y       <- getME(fit, "y")
-  X       <- getME(fit, "X")
-  Z       <- getME(fit, "Z")
-  Psi_r   <- reconf:::Psi_from_H_cpp(psi_mr = psi_hat[-r], H = H) / psi_hat[r]
+  Psi_r <- reconf:::Psi_from_H_cpp(psi_mr = psi_reml[-r], H = H) / psi_reml[r]
 
   score_cpp <- reconf:::loglikelihood(
-    psi = psi_hat,
+    psi = psi_reml,
     Y = Y, X = X, Z = Z, Hlist = Hlist, REML = TRUE,
     get_val = FALSE, get_score = TRUE, get_inf = FALSE
   )$score
@@ -231,7 +180,7 @@ test_that("C++ and R score vectors agree at MLE (REML)", {
     XtZ = crossprod(X, Z), ZtZ = crossprod(Z),
     ZtY = crossprod(Z, Y),
     Y = Y, X = X, Z = Z, H = H,
-    Psi_r = Psi_r, psi_r = psi_hat[r],
+    Psi_r = Psi_r, psi_r = psi_reml[r],
     get_val = FALSE, get_score = TRUE, get_inf = FALSE
   )$score
 

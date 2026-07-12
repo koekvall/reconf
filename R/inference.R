@@ -47,15 +47,6 @@
 #'   \item{conv}{Logical indicating whether the optimization converged.}
 #'   \item{iter}{Integer giving the number of iterations performed.}
 #'
-#' @details
-#' This function optimizes a subset of parameters in a linear mixed effects model
-#' using the trust region algorithm from the \code{trust} package.
-#'
-#' The optimization uses both gradient (score) and Hessian (information matrix)
-#' information for efficient convergence. A warning is issued if the optimization
-#' does not converge.
-#'
-#'
 #' @seealso \code{\link{score_stat}},
 #'   \code{\link{loglikelihood}}, \code{\link[trust]{trust}}
 #'
@@ -67,57 +58,18 @@ maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
   r <- length(Hlist) + 1
   p <- ncol(X)
 
-  # Argument checking
   if (check) {
-    assertthat::assert_that(is.vector(start_val, mode = "numeric"), length(start_val) > 0,
-                            msg = "start_val should be a numeric vector of positive length")
-
-    assertthat::assert_that(is.vector(opt_idx, mode = "numeric"), length(opt_idx) > 0,
-                            all(opt_idx == floor(opt_idx)), all(opt_idx > 0),
-                            msg = "opt_idx should be a vector of positive integers with length > 0")
-
-    assertthat::assert_that(is.vector(Y, mode = "numeric"), length(Y) > 0,
-                            msg = "Y should be a numeric vector of positive length")
-
-    assertthat::assert_that(is.matrix(X), nrow(X) == length(Y),
-                            msg = "X should be a matrix with nrow(X) == length(Y)")
-
-    assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == length(Y), ncol(Z) > 0,
-                            msg = "Z should be a sparse matrix with nrow(Z) == length(Y) and ncol(Z) > 0")
-
-    assertthat::assert_that(is.list(Hlist), length(Hlist) > 0,
-                            all(sapply(Hlist, methods::is, "sparseMatrix")),
-                            msg = "Hlist should be a list of sparse matrices")
-
-    assertthat::assert_that(is.logical(expected), length(expected) == 1,
-                            msg = "expected should be a single logical value")
-
-    assertthat::assert_that(is.logical(REML), length(REML) == 1,
-                            msg = "REML should be a single logical value")
-
-    assertthat::assert_that(is.null(precomp) || is.list(precomp),
-                            msg = "precomp should be NULL or a list")
-
-    expected_length <- if(REML) r else p + r
-    assertthat::assert_that(length(start_val) == expected_length,
-                            msg = paste0("start_val should have length ", expected_length,
-                                        " (", if(REML) "r" else "p + r",
-                                        " for REML = ", REML, ")"))
-
-    assertthat::assert_that(max(opt_idx) <= length(start_val),
-                            msg = "opt_idx values must not exceed length(start_val)")
-
-    assertthat::assert_that(length(unique(opt_idx)) == length(opt_idx),
-                            msg = "opt_idx should not contain duplicate values")
+    .check_lmm_args(start_val, "start_val", Y = Y, X = X, Z = Z,
+                    Hlist = Hlist, REML = REML, precomp = precomp,
+                    flags = list(REML = REML, expected = expected))
+    .check_idx(opt_idx, "opt_idx", length(start_val), unique = TRUE)
   }
 
   if(is.null(precomp)) {
     precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
   }
 
-  #############################################################################
-  # Define the objective function to be minimized
-  #############################################################################
+  # Objective for trust(): negative log-likelihood in the free parameters
   obj_fun <- function(x) {
     theta <- start_val
     theta[opt_idx] <- x
@@ -132,18 +84,14 @@ maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
          "hessian" = as.matrix(ll_things$inf_mat[opt_idx, opt_idx]))
   }
 
-  #############################################################################
-  # Do minimization
-  #############################################################################
   fit <- trust::trust(objfun = obj_fun, parinit = start_val[opt_idx],
                       rinit = rinit, rmax = rmax, ...)
-  
+
   if (!fit$converged && warn_nonconv) {
     warning("Optimization did not converge. Results may be unreliable. ",
             "Iterations: ", fit$iterations)
   }
-  
-  # Return results
+
   start_val[opt_idx] <- fit$argument
   names(start_val) <- if(REML || p == 0) paste0("psi", 1:r) else c(paste0("b", 1:p), paste0("psi", 1:r))
   list("arg" = start_val, "value" = -fit$value, "conv" = fit$converged,
@@ -219,10 +167,6 @@ maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
 #' known (not as nuisance parameters). This is useful when some parameters have
 #' been estimated separately or are constrained to specific values.
 #'
-#' The function performs checks for numerical stability, including the condition
-#' number of the information matrix. Warnings are issued if potential numerical
-#' problems are detected.
-#'
 #' @seealso \code{\link{loglikelihood}}
 #'
 #' @keywords internal
@@ -234,72 +178,23 @@ score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
   p <- ncol(X)
   r <- length(Hlist) + 1
 
-  # Argument checking
   if (check) {
-  assertthat::assert_that(is.vector(theta, mode = "numeric"), length(theta) > 0,
-                          msg = "theta should be a numeric vector of positive length")
-
-  assertthat::assert_that(is.vector(test_idx, mode = "numeric"), length(test_idx) > 0,
-                          all(test_idx == floor(test_idx)), all(test_idx > 0),
-                          msg = "test_idx should be a vector of positive integers")
-
-  assertthat::assert_that(is.null(known_idx) ||
-                          (is.vector(known_idx, mode = "numeric") && length(known_idx) >= 0 &&
-                           all(known_idx == floor(known_idx)) && all(known_idx > 0)),
-                          msg = "known_idx should be NULL or a vector of positive integers")
-
-  assertthat::assert_that(is.vector(Y, mode = "numeric"), length(Y) > 0,
-                          msg = "Y should be a numeric vector of positive length")
-
-  assertthat::assert_that(is.matrix(X), nrow(X) == length(Y),
-                          msg = "X should be a matrix with nrow(X) == length(Y)")
-
-  assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == length(Y), ncol(Z) > 0,
-                          msg = "Z should be a sparse matrix with nrow(Z) == length(Y) and ncol(Z) > 0")
-
-  assertthat::assert_that(is.list(Hlist), length(Hlist) > 0,
-                          all(sapply(Hlist, methods::is, "sparseMatrix")),
-                          msg = "Hlist should be a list of sparse matrices")
-
-  assertthat::assert_that(is.logical(REML), length(REML) == 1,
-                          msg = "REML should be a single logical value")
-
-  assertthat::assert_that(is.logical(expected), length(expected) == 1,
-                          msg = "expected should be a single logical value")
-
-  assertthat::assert_that(is.logical(efficient), length(efficient) == 1,
-                          msg = "efficient should be a single logical value")
-
-  assertthat::assert_that(is.logical(signed), length(signed) == 1,
-                          msg = "signed should be a single logical value")
-
-  assertthat::assert_that(is.null(precomp) || is.list(precomp),
-                          msg = "precomp should be NULL or a list")
-
-  expected_length <- if(REML) r else p + r
-  assertthat::assert_that(length(theta) == expected_length,
-                          msg = paste0("theta should have length ", expected_length,
-                                      " (", if(REML) "r" else "p + r",
-                                      " for REML = ", REML, ")"))
-
-  assertthat::assert_that(max(test_idx) <= length(theta),
-                          msg = "test_idx values must not exceed length(theta)")
-
-  if (!is.null(known_idx)) {
-    assertthat::assert_that(max(known_idx) <= length(theta),
-                            msg = "known_idx values must not exceed length(theta)")
-
-    assertthat::assert_that(length(intersect(test_idx, known_idx)) == 0,
-                            msg = "test_idx and known_idx should not overlap")
+    .check_lmm_args(theta, "theta", Y = Y, X = X, Z = Z, Hlist = Hlist,
+                    REML = REML, precomp = precomp,
+                    flags = list(REML = REML, expected = expected,
+                                 efficient = efficient, signed = signed))
+    .check_idx(test_idx, "test_idx", length(theta))
+    if (!is.null(known_idx) && length(known_idx) > 0) {
+      .check_idx(known_idx, "known_idx", length(theta))
+      assertthat::assert_that(length(intersect(test_idx, known_idx)) == 0,
+                              msg = "test_idx and known_idx should not overlap")
+    }
+    if(!expected && REML){
+      warning("Observed information not available for restricted likelihood; using
+              expected.")
+    }
   }
 
-  if(!expected && REML){
-    warning("Observed information not available for restricted likelihood; using
-            expected.")
-  }
-  }
-
-  # Remove duplicates from index vectors
   test_idx <- unique(test_idx)
   if (!is.null(known_idx) && length(known_idx) > 0) {
     known_idx <- unique(known_idx)

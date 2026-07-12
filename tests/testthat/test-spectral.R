@@ -23,14 +23,7 @@ make_dense_r2 <- function(n = 25, q = 30, seed = 1) {
   list(Y = Y, X = X, Z = Z, Hlist = Hlist, psi = psi_true, n = n, q = q)
 }
 
-# q-side and spectral evaluations of the same likelihood, for comparison
-ll_q <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
-  reconf:::loglikelihood(psi = psi, b = b, Y = Y, X = X, Z = Z, Hlist = Hlist,
-                         REML = REML, get_val = TRUE, get_score = TRUE,
-                         get_inf = TRUE, get_beta = TRUE, expected = expected,
-                         check = FALSE)
-}
-
+# Spectral evaluation of the same likelihood; ll_q (helper-paths.R) is the oracle
 ll_s <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
   pc <- reconf:::get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist,
                              method = "spectral")

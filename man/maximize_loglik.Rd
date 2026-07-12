@@ -84,14 +84,6 @@ A list with components:
 Optimizes a subset of parameters in a linear mixed effects model while
 holding others fixed. Uses the trust region algorithm for optimization.
 }
-\details{
-This function optimizes a subset of parameters in a linear mixed effects model
-using the trust region algorithm from the \code{trust} package.
-
-The optimization uses both gradient (score) and Hessian (information matrix)
-information for efficient convergence. A warning is issued if the optimization
-does not converge.
-}
 \seealso{
 \code{\link{score_stat}},
 \code{\link{loglikelihood}}, \code{\link[trust]{trust}}

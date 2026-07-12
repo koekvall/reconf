@@ -101,10 +101,6 @@ parameters.
 When \code{known_idx} is specified, those parameters are treated as fixed and
 known (not as nuisance parameters). This is useful when some parameters have
 been estimated separately or are constrained to specific values.
-
-The function performs checks for numerical stability, including the condition
-number of the information matrix. Warnings are issued if potential numerical
-problems are detected.
 }
 \seealso{
 \code{\link{loglikelihood}}

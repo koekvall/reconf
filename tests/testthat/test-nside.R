@@ -28,14 +28,7 @@ make_crossed <- function(n = 30, l1 = 12, l2 = 20, seed = 1) {
   list(Y = Y, X = X, Z = Z, Hlist = Hlist, psi = psi_true, n = n, q = q)
 }
 
-# q-side and n-side evaluations of the same likelihood, for comparison
-ll_q <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
-  reconf:::loglikelihood(psi = psi, b = b, Y = Y, X = X, Z = Z, Hlist = Hlist,
-                         REML = REML, get_val = TRUE, get_score = TRUE,
-                         get_inf = TRUE, get_beta = TRUE, expected = expected,
-                         check = FALSE)
-}
-
+# n-side evaluation of the same likelihood; ll_q (helper-paths.R) is the oracle
 ll_n <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
   K <- reconf:::get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist,
                             method = "n_side")$K

@@ -19,29 +19,9 @@ Psi_from_Hlist <- function(psi_mr, Hlist)
 }
 
 
-#' Log-likelihood in pure R
-#'
-#' Calculates the log-likelihood, score vector and Fisher information matrix
-#' for the covariance parameter vector \code{psi} in a linear mixed effects model.
-#'
-#' @param Z A matrix of fixed effects.
-#' @param ZtZXe Pre-computed matrix with of \eqn{Z'[Z, X, e]}
-#' @param e An error or residual vector (see \code{?loglikelihood}).
-#' @param H Matrix of derivatives of Psi with respect to elements of psi.
-#'          Assumes \eqn{H = [H_1, \dots , H_{r - 1}]}, where \eqn{H_j} is \eqn{q\times q}.
-#' @param Psi_r Covariance matrix of random effects (\eqn{\Psi}) divided by error
-#'             variance \eqn{\psi_r}.
-#' @param psi_r The error variance, \eqn{\psi_r}.
-#' @param get_val If \code{TRUE} (default), the log-likelihood will be calculated.
-#' @param get_score If \code{TRUE} (default), the score vector will be calculated.
-#' @param get_inf If \code{TRUE} (default), the information matrix will be calculated.
-#' @param expected If \code{TRUE} (detault), return expected information;
-#' otherwise observed.
-#'
-#' @return A list with components:
-#' \item{value}{The log-likelihood evaluated at supplied parameters}
-#' \item{score}{The score at supplied parameters}
-#' \item{inf_mat}{The information matrix at supplied parameters}
+# Pure-R log-likelihood, score, and information for psi; oracle for the C++
+# loglik. Arguments as in ?loglik, except ZtZXe = crossprod(Z, cbind(Z, X, e))
+# and Psi_r = Psi / psi_r. Returns value, score, inf_mat.
 loglik_psi <- function(Z, ZtZXe, e, H, Psi_r, psi_r, get_val = TRUE,
                        get_score = TRUE, get_inf = TRUE, expected = TRUE)
 {
@@ -159,40 +139,9 @@ chol_solve <- function(U, b)
 }
 
 
-#' Restricted likelihood in pure R
-#'
-#' Computes the restricted (residual) likelihood, score, and information matrix
-#' for the variance parameter \code{psi} a linear mixed effects model
-#'
-#' @param XtX An n x p matrix of the crossproduct of the design matrix of fixed
-#' effects (\eqn{X}) with itself.
-#' @param XtY An \eqn{p \times 1} vector of the crossproduct of the design matrix of fixed
-#' effects (\eqn{X}) with the response vector (\eqn{Y}).
-#' @param XtZ An \eqn{p \times q} matrix of the crossproduct of the design matrix of fixed
-#' effects (\eqn{X}) with the design matrix of random effects (\eqn{Z}).
-#' @param ZtZ A q x q matrix of the crossproduct of the design matrix of random
-#' effects (\eqn{Z}) with itself.
-#' @param ZtY A \eqn{q \times 1} vector of the crossproduct of the design matrix of random
-#' effects (\eqn{Z}) with the response vector (\eqn{Y}).
-#' @param Y An n x 1 vector of the response variable.
-#' @param X An n x p matrix of the design matrix of fixed effects.
-#' @param Z An n x q matrix of the design matrix of random effects.
-#' @param H A q x rq matrix, where \eqn{H = [H_1, \dots , H_r]}, with \eqn{H_j = \partial \Psi / \partial \psi_j}
-#' @param Psi_r The covariance matrix of the random effects (\eqn{Psi}) divided by the
-#' error variance (\eqn{\psi_r})
-#' @param psi_r A scalar value of the error variance.
-#' @param get_val If \code{TRUE} (default), the log-likelihood will be computed.
-#' @param get_score If \code{TRUE} (default), the score vector will be computed.
-#' @param get_inf If \code{TRUE} (default), the Fisher information matrix will be
-#' computed.
-#'
-#' @return A list with elements:
-#' \item{value}{The restricted log-likelihood at supplied parameters.}
-#' \item{score}{The restricted score at the supplied parameters.}
-#' \item{inf_mat}{The expected restricted information matrix at supplied parameters}
-#' \item{beta}{Partial maximizer of the likelihood in \eqn{\beta}}
-#' \item{I_b_chol}{Cholesky root of \eqn{X'\Sigma^{-1}X}, the expected
-#' information matrix for \eqn{\beta}}
+# Pure-R restricted log-likelihood, score, and expected information; oracle
+# for the C++ loglik_res. Cross-product arguments as in ?loglik_res;
+# Psi_r = Psi / psi_r. Returns value, score, inf_mat, beta, I_b_chol.
 res_ll <- function(XtX, XtY, XtZ, ZtZ, ZtY, Y, X, Z, H, Psi_r, psi_r,
                    get_val = TRUE, get_score = FALSE, get_inf = FALSE)
 {

@@ -106,16 +106,9 @@ loglik <- function(A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, g
 #' \item{I_b_chol}{Cholesky root of the expected information matrix
 #'   for \eqn{\beta}, \eqn{I(\beta; \psi) = X' \Sigma^{-1} X}}
 #'
-#' @details The model is \deqn{Y = X\beta + Z U + E,} where \eqn{U \sim N_q(0, \Psi)}
-#' and \eqn{E \sim N_n(0, \psi_r I_n)}. The first \eqn{r - 1} elements of \eqn{\psi}
-#' parameterize \eqn{\Psi}, while the \eqn{r}th and last element is the error
-#' variance. It is assumed that \eqn{H_j = \partial \Psi / \partial \psi_j} is
-#' a (usually sparse) matrix of zeros and ones, \eqn{j \in \{1, \dots, r - 1\}},
-#' and that \eqn{\Psi = \sum_{j = 1}^{r - 1}\psi_j H_j}. Thus, \eqn{\psi_1, \dots, \psi_{r - 1}}
-#' are variances and covariances of random effects.
-#' The argument matrix \code{H} is \eqn{H = [H_1, \dots, H_{r - 1}]}.
-#'
-#' The restricted likelihood integrates out the fixed effects \eqn{\beta}.
+#' @details See \code{?loglik} for the model and the parameterization of
+#' \eqn{\Psi} through \code{H}. The restricted likelihood integrates out the
+#' fixed effects \eqn{\beta}.
 #'
 #' The caller is responsible for verifying feasibility and computing \code{A}
 #' and \code{ldetB}; see \code{?loglik}.

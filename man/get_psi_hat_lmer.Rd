@@ -21,14 +21,4 @@ number of covariance parameters.
 Extracts all estimated variance and covariance parameters from a fitted
 linear mixed model, including the error variance.
 }
-\details{
-This function extracts the full vector of covariance parameter estimates
-(often denoted psi or theta in the package), including:
-\itemize{
-\item Variances and covariances of random effects
-\item Error variance (last element)
-}
-
-The ordering follows lme4's internal parameterization with "lower.tri" ordering.
-}
 \keyword{internal}

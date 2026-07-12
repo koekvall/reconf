@@ -63,6 +63,10 @@ The parameter ordering follows `as.data.frame(VarCorr(fit), order = "lower.tri")
 - **[Background / supporting theory]** Ekvall, K. O. and Bottai, M. (2026).
   Uniform inference in linear mixed models. *Biometrika* 113(1), asaf079.
   [doi:10.1093/biomet/asaf079](https://doi.org/10.1093/biomet/asaf079)
+- **[Background / supporting theory]** Zhang, Y., Ekvall, K. O., and
+  Molstad, A. J. (2025). Fast and reliable confidence intervals for a
+  variance component. *Biometrika* 112(2), asaf010.
+  [doi:10.1093/biomet/asaf010](https://doi.org/10.1093/biomet/asaf010)
 - **[Background / supporting theory]** Ekvall, K. O. and Bottai, M. (2022).
   Confidence regions near singular information and boundary points with
   applications to mixed models. *The Annals of Statistics* 50(3), 1806–1832.

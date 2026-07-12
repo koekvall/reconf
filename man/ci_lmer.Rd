@@ -99,6 +99,13 @@ nuisance parameters optimized at each grid point using warm starts (see
 between adjacent grid points that bracket the \eqn{\pm z_{1-\alpha/2}}
 crossings. Increase \code{num_points} or \code{search_radius} if a warning is
 issued about the profile not crossing the critical value.
+
+Prior weights and offsets in the \code{lmer} fit are supported: the model
+is transformed to unit error variance by scaling \code{Y}, \code{X}, and
+\code{Z} with the square-root weights (after subtracting the offset),
+which leaves all covariance parameters and their inference unchanged. As
+in \code{lme4}, \code{psi[r]} is then the unit error variance, and
+observation \eqn{i} has error variance \eqn{\psi_r / w_i}.
 }
 \examples{
 \donttest{

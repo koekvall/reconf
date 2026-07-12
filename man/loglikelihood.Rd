@@ -103,5 +103,9 @@ The parameters are feasible if \code{psi[r] > 0} and
 \eqn{\Sigma = Z \Psi Z' + \psi_r I_n} is positive definite; this allows
 \eqn{\Psi} to be indefinite. At infeasible parameters the value is
 \code{-Inf} and score and information are zero.
+
+The value includes all constants and matches \code{logLik()} of an
+equivalent \code{lme4} fit (for fits with prior weights, up to the
+constant \eqn{\sum_i \log(w_i)/2} from the weight transformation).
 }
 \keyword{internal}

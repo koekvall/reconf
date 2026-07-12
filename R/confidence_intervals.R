@@ -65,6 +65,13 @@
 #' crossings. Increase \code{num_points} or \code{search_radius} if a warning is
 #' issued about the profile not crossing the critical value.
 #'
+#' Prior weights and offsets in the \code{lmer} fit are supported: the model
+#' is transformed to unit error variance by scaling \code{Y}, \code{X}, and
+#' \code{Z} with the square-root weights (after subtracting the offset),
+#' which leaves all covariance parameters and their inference unchanged. As
+#' in \code{lme4}, \code{psi[r]} is then the unit error variance, and
+#' observation \eqn{i} has error variance \eqn{\psi_r / w_i}.
+#'
 #' @seealso \code{\link{ci_all_lmer}}, \code{\link{score_profile}}
 #'
 #' @examples
@@ -158,9 +165,10 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
     stop("lmerfit must be an lmerMod object from lme4::lmer")
   if (is.null(REML)) REML <- lme4::getME(lmerfit, "REML") != 0
 
-  Y       <- lme4::getME(lmerfit, "y")
-  X       <- lme4::getME(lmerfit, "X")
-  Z       <- lme4::getME(lmerfit, "Z")
+  m       <- .lmer_matrices(lmerfit)  # offset and prior weights applied
+  Y       <- m$Y
+  X       <- m$X
+  Z       <- m$Z
   Hlist   <- get_Hlist_lmer(lmerfit)
   precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
   psi_hat <- get_psi_hat_lmer(lmerfit)

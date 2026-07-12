@@ -1,51 +1,22 @@
 # reconf 0.1.1
 
-* The outward CI search accelerates: each step is chosen by a secant
-  prediction of the critical-value crossing, capped at twice the previous
-  accepted step, with nuisance warm starts extrapolated along the accepted
-  path and the final bracket refined by regula falsi (alternating with
-  bisection) to the resolution of the fixed-step search. Typically 5-10
-  times fewer profile evaluations per bound; `ci_all_lmer()` on the FEV1
-  example takes about 0.6 s. Set `accelerate = FALSE` in `ci_lmer()` or
-  `ci_all_lmer()` for the previous fixed-step search; both resolve bounds
-  to within one step (SE/40) and agree to that tolerance on all test
-  models. Unbounded searches now stop at the search radius
-  `num_points * step_size` instead of after `num_points` steps.
-
-* The restricted-information computation no longer forms dense q x q
-  matrices: all traces use the decomposition Z'PZ = Z'Sigma^{-1}Z - G'E1,
-  whose second term has rank p, so the cost is linear in q for
-  block-structured models. A full REML evaluation on the FEV1 example drops
-  from 7.6 ms to 1.1 ms and `ci_all_lmer()` from 43 s to 6 s (26 s to 4 s
-  with `onestep = TRUE`) relative to reconf 0.1, with identical results.
-* The feasibility check caches the symbolic Cholesky analysis (pattern from
-  `Psi(1)`, the sum of the structure matrices) and redoes only the numeric
-  factorization at each evaluation.
-
-* The log-likelihood is now `-Inf` whenever the marginal covariance matrix
-  `Sigma = Z Psi Z' + psi_r I` is not positive definite. Previously the
-  log-determinant was computed from its absolute value, so infeasible
-  parameters could yield a finite value; in balanced designs this could not
-  be detected from the determinant's sign because several eigenvalues cross
-  zero together. Feasibility is now decided by an exact Cholesky-based test.
-* The solve producing `A = (I + Psi_r Z'Z)^{-1} Psi_r` moved from Eigen's
-  SparseLU, which treats each right-hand-side column as dense, to
-  `Matrix::solve`, whose sparsity-aware triangular solve costs time
-  proportional to the nonzeros in the solution. For block-structured random
-  effects this makes the solve linear rather than quadratic in the number of
-  random effects; `ci_all_lmer()` is roughly 1.7x faster on the FEV1 example
-  and large grouped models gain much more.
-* Likelihood evaluations in the confidence-interval search now reuse
-  precomputed quantities (including the concatenated structure matrix `H`)
-  and skip redundant argument validation; `ci_all_lmer()` extracts model
-  components once instead of once per parameter.
-* `loglik()` and `loglik_res()` (internal) now take `A` and the
-  log-determinant as arguments instead of factorizing internally.
-* Fixed inconsistent element names in the error path of `res_ll()` and
-  renamed the returned Cholesky factor to `I_b_chol` to match what is
-  computed (the factor of the information, not its inverse).
-* Documentation fixes: the default `ci_lmer()` step size is `SE / 40`, and
-  the unused residual entry was removed from the precompute list.
+* Fixed: the log-likelihood could be finite at parameters where
+  `Sigma = Z Psi Z' + psi_r I` is not positive definite, corrupting CI
+  searches. Feasibility is now decided by an exact Cholesky test.
+* Fixed: models with prior weights or an offset silently used the unweighted
+  likelihood. They are now handled exactly by transforming Y, X, and Z with
+  the square-root weights.
+* The log-likelihood value now includes all constants and equals `logLik()`
+  from lme4 (weighted fits: up to half the sum of log weights).
+* Large speedups; `ci_all_lmer()` on the FEV1 example runs in 0.6 s instead
+  of 43 s, with identical intervals. Main changes: sparsity-aware solves via
+  Matrix, no dense q x q matrices in the restricted information, cached
+  symbolic factorizations, reuse of precomputed quantities, and a
+  secant-accelerated outward CI search (`accelerate = FALSE` restores the
+  fixed-step search; both resolve bounds to within SE/40).
+* Internal `loglik()` and `loglik_res()` now take the matrix A and its
+  log-determinant as arguments; consistent return names in `res_ll()`;
+  documentation fixes.
 
 # reconf 0.1
 

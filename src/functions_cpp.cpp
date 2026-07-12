@@ -111,7 +111,8 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
   Eigen::VectorXd etilde = (1.0 / psi_r) * (e - Z * (A * (Z.transpose() * e)));
 
   if (get_val) {
-    ll = -0.5 * ldetB - 0.5 * (double)n * log(psi_r) - 0.5 * etilde.dot(e);
+    ll = -0.5 * ldetB - 0.5 * (double)n * log(2.0 * M_PI * psi_r) -
+      0.5 * etilde.dot(e);
   }
 
   if (!get_score && !get_inf) {
@@ -315,7 +316,7 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
   if (get_val) {
     ll = ldetB;
     ll += 2.0 * llt.matrixLLT().diagonal().array().log().sum();
-    ll += Y.dot(etilde) + n * log(2.0 * M_PI * psi_r);
+    ll += Y.dot(etilde) + (n - p) * log(2.0 * M_PI) + n * log(psi_r);
     ll *= -0.5;
   }
 

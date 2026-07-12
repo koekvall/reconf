@@ -66,6 +66,10 @@
 #' \eqn{\Psi} to be indefinite. At infeasible parameters the value is
 #' \code{-Inf} and score and information are zero.
 #'
+#' The value includes all constants and matches \code{logLik()} of an
+#' equivalent \code{lme4} fit (for fits with prior weights, up to the
+#' constant \eqn{\sum_i \log(w_i)/2} from the weight transformation).
+#'
 #' @useDynLib reconf, .registration=TRUE
 #' @import Matrix methods
 #' @keywords internal
@@ -260,7 +264,7 @@ loglik_psi <- function(Z, ZtZXe, e, H, Psi_r, psi_r, get_val = TRUE,
   # Add loglik term before overwriting
   if(get_val){
     ll <- -0.5 * Matrix::determinant(A[, 1:q] + Matrix::Diagonal(q), logarithm = TRUE)$modulus -
-      0.5 * n * log(psi_r)
+      0.5 * n * log(2 * pi * psi_r)
   }
 
   # Matrix denoted M in manuscript is A[, 1:q]
@@ -432,7 +436,7 @@ res_ll <- function(XtX, XtY, XtZ, ZtZ, ZtY, Y, X, Z, H, Psi_r, psi_r,
 
   if(get_val){
     ll <- ll + 2 * sum(log(Matrix::diag(U)))
-    ll <- ll + sum(Y * a) + n * log(2 * pi * psi_r)
+    ll <- ll + sum(Y * a) + (n - p) * log(2 * pi) + n * log(psi_r)
     ll <- -0.5 * ll
   }
 

@@ -144,3 +144,47 @@ test_that("all variance lower bounds are nonneg under default", {
   is_var <- is.na(vc$var2)
   expect_true(all(ci[is_var, "lower"] >= 0))
 })
+
+# ── weights and offsets ──────────────────────────────────────────────────────
+
+test_that("prior weights are handled exactly via the W^(1/2) transformation", {
+  skip_on_cran()
+  set.seed(7)
+  w <- runif(nrow(sleepstudy), 0.2, 5)
+  for (reml in c(TRUE, FALSE)) {
+    fitw <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy,
+                 REML = reml, weights = w)
+    m <- reconf:::.lmer_matrices(fitw)
+    psi <- reconf:::get_psi_hat_lmer(fitw)
+    b <- if (reml) NULL else as.vector(fixef(fitw))
+    ll <- reconf:::loglikelihood(psi = psi, b = b, Y = m$Y, X = m$X, Z = m$Z,
+                                 Hlist = reconf:::get_Hlist_lmer(fitw),
+                                 REML = reml, get_inf = FALSE)
+    # Value matches logLik() up to the weight-transformation Jacobian
+    expect_equal(ll$value + 0.5 * sum(log(w)), as.numeric(logLik(fitw)),
+                 tolerance = 1e-6)
+    # Score vanishes at the weighted estimates
+    expect_lt(max(abs(ll$score)), 1e-2)
+  }
+  # CI machinery runs on a weighted fit and brackets the estimate
+  fitw <- lmer(Reaction ~ Days + (1 | Subject), data = sleepstudy, weights = w)
+  ci <- ci_lmer(fitw, test_idx = 1L)
+  mle <- as.data.frame(VarCorr(fitw), order = "lower.tri")$vcov[1]
+  expect_lt(ci[1], mle)
+  expect_gt(ci[2], mle)
+})
+
+test_that("offsets are subtracted before the analysis", {
+  skip_on_cran()
+  set.seed(8)
+  off <- runif(nrow(sleepstudy), -10, 10)
+  fito <- lmer(Reaction ~ Days + (1 | Subject), data = sleepstudy,
+               REML = TRUE, offset = off)
+  m <- reconf:::.lmer_matrices(fito)
+  psi <- reconf:::get_psi_hat_lmer(fito)
+  ll <- reconf:::loglikelihood(psi = psi, Y = m$Y, X = m$X, Z = m$Z,
+                               Hlist = reconf:::get_Hlist_lmer(fito),
+                               REML = TRUE, get_inf = FALSE)
+  expect_equal(ll$value, as.numeric(logLik(fito)), tolerance = 1e-6)
+  expect_lt(max(abs(ll$score)), 1e-2)
+})

@@ -106,6 +106,31 @@ get_Hlist_lmer <- function(lmerfit)
   })
 }
 
+# Extract Y, X, Z from an lmer fit with the offset and prior weights applied.
+# Premultiplying by W^(1/2) turns the weighted model, Var(E) = psi_r W^{-1},
+# into the unit-variance model the likelihood code implements, with identical
+# parameters (beta, Psi, psi_r); the offset enters the mean only. All
+# psi-dependent quantities (scores, information, statistics, intervals) are
+# exactly invariant under the transformation; only the log-likelihood value
+# changes, by the constant 0.5 * sum(log(w)). The diagonal scaling leaves
+# Z's sparsity pattern unchanged.
+.lmer_matrices <- function(lmerfit) {
+  Y <- lme4::getME(lmerfit, "y")
+  X <- lme4::getME(lmerfit, "X")
+  Z <- lme4::getME(lmerfit, "Z")
+  off <- lme4::getME(lmerfit, "offset")
+  if (length(off) > 0 && any(off != 0)) Y <- Y - off
+  w <- stats::weights(lmerfit)
+  if (length(w) > 0 && any(w != 1)) {
+    if (any(w <= 0)) stop("prior weights must be positive")
+    sw <- sqrt(w)
+    Y <- sw * Y
+    X <- sw * X
+    Z <- Matrix::Diagonal(x = sw) %*% Z
+  }
+  list(Y = Y, X = X, Z = Z)
+}
+
 #' Get precomputed quantities from lme4 fit
 #'
 #' Extracts and computes quantities from an lme4 fit that can be reused in
@@ -142,11 +167,9 @@ get_precomp_lmer <- function(lmerfit, REML = NULL, Hlist = NULL){
     }
   }
 
-  X <- lme4::getME(lmerfit, "X")
-  Z <- lme4::getME(lmerfit, "Z")
-  Y <- lme4::getME(lmerfit, "y")
+  m <- .lmer_matrices(lmerfit)
 
-  get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
+  get_precomp(Y = m$Y, X = m$X, Z = m$Z, REML = REML, Hlist = Hlist)
 }
 
 #' Extract estimated covariance parameters from lme4 fit
@@ -256,10 +279,11 @@ score_test_lmer <- function(lmerfit,
     stop("lmerfit must be an lmerMod object from lme4::lmer")
   }
 
-  # Extract model components
-  Y <- lme4::getME(lmerfit, "y")
-  X <- lme4::getME(lmerfit, "X")
-  Z <- lme4::getME(lmerfit, "Z")
+  # Extract model components (offset and prior weights applied)
+  m <- .lmer_matrices(lmerfit)
+  Y <- m$Y
+  X <- m$X
+  Z <- m$Z
   Hlist <- get_Hlist_lmer(lmerfit)
   REML <- lme4::getME(lmerfit, "REML") != 0
   precomp <- get_precomp_lmer(lmerfit, REML = REML, Hlist = Hlist)

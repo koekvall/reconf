@@ -19,7 +19,7 @@ loglikelihood(
   expected = TRUE,
   precomp = NULL,
   check = TRUE,
-  method = c("auto", "q_side", "n_side")
+  method = c("auto", "q_side", "n_side", "spectral")
 )
 }
 \arguments{
@@ -58,11 +58,15 @@ set \code{FALSE} to skip redundant validation.}
 \item{method}{Which computational path to use: \code{"q_side"} works with
 sparse \eqn{q \times q} matrices via the Woodbury identity;
 \code{"n_side"} works with dense \eqn{n \times n} matrices and has cost
-independent of \eqn{q}. The default \code{"auto"} picks \code{"n_side"}
-iff \eqn{q \ge n} and \eqn{Z} is dense (more than 10 percent nonzeros), the
-regime where the sparse path degenerates; for sparse \eqn{Z} the q-side is
-fast even when \eqn{q \gg n}. When \code{precomp} is supplied, its
-\code{method} tag takes precedence and this argument is ignored.}
+independent of \eqn{q}; \code{"spectral"} applies only when \eqn{r = 2}
+and evaluates in \eqn{O(n)} time after a one-time eigendecomposition
+stored in the precomputations (see \code{?loglik_spectral}). The default
+\code{"auto"} picks a dense path iff \eqn{q \ge n} and \eqn{Z} is dense
+(more than 10 percent nonzeros), the regime where the sparse path
+degenerates -- \code{"spectral"} if \eqn{r = 2} and \code{"n_side"}
+otherwise; for sparse \eqn{Z} the q-side is fast even when \eqn{q \gg n}.
+When \code{precomp} is supplied, its \code{method} tag takes precedence
+and this argument is ignored.}
 }
 \value{
 A list with components:
@@ -104,8 +108,11 @@ Optional entries, computed internally when absent: \code{H} (the matrix
 \code{cbind(Hlist)} coerced to \code{generalMatrix}) and \code{R} (sparse
 Cholesky factor of \code{ZtZ}, used by the feasibility check). A precomp
 list with \code{method = "n_side"} instead carries the dense matrix
-\code{K} of concatenated \eqn{Z H_j Z'} (see \code{?loglik_n}). Use
-\code{get_precomp} to construct all entries at once for either path.
+\code{K} of concatenated \eqn{Z H_j Z'} (see \code{?loglik_n}), and one
+with \code{method = "spectral"} carries the eigenvalues \code{d} of
+\eqn{K = Z H_1 Z'} and the rotated data \code{Yt}, \code{Xt} (see
+\code{?loglik_spectral}). Use \code{get_precomp} to construct all entries
+at once for any path.
 
 If \code{REML} is \code{FALSE}, the parameter \code{b} must be provided
 when \code{p > 0} to compute residuals \code{e = Y - X \%*\% b}. When

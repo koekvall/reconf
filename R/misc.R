@@ -90,21 +90,44 @@ get_idx_ltri <- function(row, col, n)
 # K_j = Z H_j Z'. The K_j do not depend on psi, so every likelihood
 # evaluation reuses them; this is what makes the n-side path independent of q.
 #
-# method = "auto" picks n_side iff q >= n and Z is dense-ish. Dimensions
-# alone are not the right criterion: with sparse Z (e.g., crossed
-# intercepts), Z'Z has O(n) off-diagonals however large q is, and the sparse
-# q-side stays as fast or faster than the dense n-side even for q >> n
-# (benchmarked 2026-07-12: at n = 1000, q = 6000 crossed, q-side ~4 ms vs
-# n-side ~150 ms). The n-side wins when Z is dense -- kernel-, kinship-, or
-# spline-type designs -- where the q-side degenerates to dense q x q algebra
-# (same benchmark: 50-140x in favor of n-side). The density threshold is a
+# With method = "spectral" (requires r = 2, a single structure matrix),
+# precompute for the O(n)-per-evaluation path (loglik_spectral,
+# loglik_res_spectral): the eigendecomposition K = Z H_1 Z' = U diag(d) U'
+# and the rotated data Yt = U'Y, Xt = U'X. Because Sigma = psi_1 K + psi_2 I
+# shares the eigenvectors of K for every psi, the one-time O(n^3)
+# decomposition replaces the per-evaluation factorization entirely.
+#
+# method = "auto" picks a dense path iff q >= n and Z is dense-ish, and among
+# the dense paths the spectral one when it applies (r = 2). Dimensions alone
+# are not the right criterion: with sparse Z (e.g., crossed intercepts), Z'Z
+# has O(n) off-diagonals however large q is, and the sparse q-side stays as
+# fast or faster than the dense n-side even for q >> n (benchmarked
+# 2026-07-12: at n = 1000, q = 6000 crossed, q-side ~4 ms vs n-side ~150 ms).
+# The dense paths win when Z is dense -- kernel-, kinship-, or spline-type
+# designs -- where the q-side degenerates to dense q x q algebra (same
+# benchmark: 50-140x in favor of n-side). The density threshold is a
 # heuristic; callers can always force a path via method.
 get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
-                        method = c("auto", "q_side", "n_side")) {
+                        method = c("auto", "q_side", "n_side", "spectral")) {
   method <- match.arg(method)
   if (method == "auto") {
     dens <- Matrix::nnzero(Z) / (as.double(nrow(Z)) * ncol(Z))
-    method <- if (ncol(Z) >= nrow(Z) && dens > 0.1) "n_side" else "q_side"
+    if (ncol(Z) >= nrow(Z) && dens > 0.1) {
+      method <- if (length(Hlist) == 1) "spectral" else "n_side"
+    } else {
+      method <- "q_side"
+    }
+  }
+  if (method == "spectral") {
+    assertthat::assert_that(is.list(Hlist), length(Hlist) == 1,
+                            msg = paste("method = 'spectral' requires exactly",
+                                        "one structure matrix (r = 2)"))
+    K <- as.matrix(Matrix::tcrossprod(Z %*% Hlist[[1]], Z))
+    ed <- eigen(K, symmetric = TRUE)
+    return(list("d" = ed$values,
+                "Yt" = as.vector(crossprod(ed$vectors, Y)),
+                "Xt" = as.matrix(crossprod(ed$vectors, X)),
+                "method" = "spectral"))
   }
   if (method == "n_side") {
     assertthat::assert_that(is.list(Hlist),
@@ -158,3 +181,4 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
   }
   precomp
 }
+

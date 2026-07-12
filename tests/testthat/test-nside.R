@@ -236,7 +236,13 @@ test_that("loglikelihood dispatches on method and precomp tag", {
   set.seed(4)
   Zd <- methods::as(Matrix::Matrix(matrix(rnorm(20 * 25), 20, 25),
                                    sparse = TRUE), "generalMatrix")
-  Hd <- list(methods::as(Matrix::Diagonal(25), "generalMatrix"))
+  # Two structure matrices (r = 3): the dense regime picks the n-side; with
+  # a single structure matrix (r = 2) it picks the spectral path instead
+  # (tested in test-spectral.R)
+  Hd <- list(
+    methods::as(Matrix::Diagonal(25, rep(c(1, 0), c(10, 15))), "generalMatrix"),
+    methods::as(Matrix::Diagonal(25, rep(c(0, 1), c(10, 15))), "generalMatrix")
+  )
   expect_identical(
     reconf:::get_precomp(rnorm(20), cbind(1, rnorm(20)), Zd, Hlist = Hd,
                          method = "auto")$method,

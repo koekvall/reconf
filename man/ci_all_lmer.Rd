@@ -11,7 +11,7 @@ ci_all_lmer(
   onestep = FALSE,
   nonneg = TRUE,
   accelerate = TRUE,
-  method = c("auto", "q_side", "n_side"),
+  method = c("auto", "q_side", "n_side", "spectral"),
   ...
 )
 }
@@ -36,7 +36,8 @@ at 0 for variance parameters; see \code{\link{ci_lmer}}.}
 steps in the outward search; see \code{\link{ci_lmer}}.}
 
 \item{method}{Likelihood computation path, one of \code{"auto"} (default),
-\code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.}
+\code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see
+\code{\link{loglikelihood}}.}
 
 \item{...}{Additional arguments passed to \code{\link{ci_lmer}}.}
 }

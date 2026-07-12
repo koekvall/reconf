@@ -44,7 +44,8 @@
 #'   needs 5--10 times fewer profile evaluations per bound. If \code{FALSE},
 #'   every step has length \code{step_size} (the fixed-step search).
 #' @param method Likelihood computation path, one of \code{"auto"} (default),
-#'   \code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.
+#'   \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see
+#'   \code{\link{loglikelihood}}.
 #' @param ... Additional arguments passed to the trust-region optimizer.
 #'
 #' @return A one-row matrix of class \code{reconf_ci} with columns
@@ -90,7 +91,7 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
                     num_points = 500L, REML = NULL, expected = TRUE,
                     known_idx = NULL, return_profile = FALSE,
                     onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
-                    method = c("auto", "q_side", "n_side"), ...) {
+                    method = c("auto", "q_side", "n_side", "spectral"), ...) {
 
   setup <- .ci_setup(lmerfit, REML, method = match.arg(method))
   ci <- .ci_lmer_core(setup, test_idx = test_idx, level = level,
@@ -122,7 +123,8 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
 #' @param accelerate Logical. If \code{TRUE} (default), use secant-accelerated
 #'   steps in the outward search; see \code{\link{ci_lmer}}.
 #' @param method Likelihood computation path, one of \code{"auto"} (default),
-#'   \code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.
+#'   \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see
+#'   \code{\link{loglikelihood}}.
 #' @param ... Additional arguments passed to \code{\link{ci_lmer}}.
 #'
 #' @return A matrix of class \code{reconf_ci} with one row per parameter and
@@ -144,7 +146,7 @@ ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
 #' @export
 ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
                         onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
-                        method = c("auto", "q_side", "n_side"), ...) {
+                        method = c("auto", "q_side", "n_side", "spectral"), ...) {
   dots <- list(...)
   REML <- if (is.null(dots$REML)) NULL else dots$REML
   dots$REML <- NULL

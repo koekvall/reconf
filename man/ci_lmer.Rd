@@ -17,7 +17,7 @@ ci_lmer(
   onestep = FALSE,
   nonneg = TRUE,
   accelerate = TRUE,
-  method = c("auto", "q_side", "n_side"),
+  method = c("auto", "q_side", "n_side", "spectral"),
   ...
 )
 }
@@ -73,7 +73,8 @@ needs 5--10 times fewer profile evaluations per bound. If \code{FALSE},
 every step has length \code{step_size} (the fixed-step search).}
 
 \item{method}{Likelihood computation path, one of \code{"auto"} (default),
-\code{"q_side"}, or \code{"n_side"}; see \code{\link{loglikelihood}}.}
+\code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see
+\code{\link{loglikelihood}}.}
 
 \item{...}{Additional arguments passed to the trust-region optimizer.}
 }

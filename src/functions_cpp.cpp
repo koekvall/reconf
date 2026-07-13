@@ -178,13 +178,20 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
 
       I(p + r - 1, p + r - 1) += e_check.dot(etilde);
 
+      // B w_j precomputed once per j: the triangular loop below reuses each
+      // column r - 1 times, so the stochastic psi block costs O(r q^2)
+      // instead of O(r^2 q^2)
+      Eigen::MatrixXd Bw(q, r - 1);
+      for (int jj = 0; jj < r - 1; jj++) {
+        Bw.col(jj) = B * w.middleRows(jj * q, q);
+      }
       for (int jj = 0; jj < r - 1; jj++) {
         if(p > 0) {
           I.block(0, p + jj, p, 1) = (1 / psi_r) * (XtZ *(C * w.middleRows(jj * q, q)));
         }
         I(p + jj, p + r - 1) += w.middleRows(jj * q, q).dot(v);
         for (int ii = 0; ii <= jj; ii++) {
-          I(p + ii, p + jj) +=  (B * w.middleRows(ii * q, q)).dot(w.middleRows(jj * q, q));
+          I(p + ii, p + jj) += Bw.col(ii).dot(w.middleRows(jj * q, q));
         }
       }
     }

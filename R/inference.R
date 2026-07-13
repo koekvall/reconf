@@ -219,13 +219,16 @@ score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
                              expected = expected,
                              precomp = precomp,
                              check = FALSE)
-  # Check condition of information matrix (skipped in hot loops via check)
+  # Check condition of information matrix (skipped in hot loops via check).
+  # The matrix is small (at most (p + r)-dimensional), so the exact spectral
+  # condition number is affordable; the threshold says three quarters of the
+  # double-precision digits are gone.
   if (check) {
     cond <- tryCatch(
-      kappa(ll_things$inf_mat, exact = FALSE),
+      kappa(ll_things$inf_mat, exact = TRUE),
       error = function(e) Inf
     )
-    if (cond > 1e12) {
+    if (cond > .Machine$double.eps^-0.75) {
       warning("Information matrix is poorly conditioned (condition number: ",
               format(cond, scientific = TRUE), "). Results may be unreliable.")
     }
@@ -233,20 +236,44 @@ score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
 
   inf_mat <- ll_things$inf_mat[test_idx, test_idx, drop = FALSE]
 
-  # Use efficient information only if there are nuisance parameters
-  # Combine test_idx and known_idx to exclude from nuisance parameters
+  # Use efficient information only if there are nuisance parameters; known
+  # parameters are excluded entirely (fixed, not profiled)
   exclude_idx <- if (is.null(known_idx)) test_idx else c(test_idx, known_idx)
-  
-  if (efficient && (length(ll_things$score) > length(exclude_idx))) {
-    A_nt <- ll_things$inf_mat[-exclude_idx, test_idx, drop = FALSE]
-    I_nn <- ll_things$inf_mat[-exclude_idx, -exclude_idx, drop = FALSE]
-    inf_mat <- inf_mat - crossprod(A_nt, .solve_sym_eigen(I_nn, A_nt))
+  nuis_idx <- setdiff(seq_along(ll_things$score), exclude_idx)
+
+  if (efficient && length(nuis_idx) > 0) {
+    # Efficient information from one Cholesky of the joint (nuisance, test)
+    # block: with R'R = I[(n,t),(n,t)], the Schur complement
+    # I_tt - I_tn I_nn^{-1} I_nt equals R22'R22, positive semidefinite by
+    # construction. The explicit subtraction cancels catastrophically when
+    # the information is nearly singular -- the near-boundary regime the
+    # method targets -- so it remains only as the fallback when the joint
+    # block is not positive definite (possible for observed information).
+    joint_idx <- c(nuis_idx, test_idx)
+    ch <- tryCatch(chol(ll_things$inf_mat[joint_idx, joint_idx]),
+                   error = function(e) NULL)
+    if (!is.null(ch)) {
+      tt <- length(nuis_idx) + seq_along(test_idx)
+      inf_mat <- crossprod(ch[tt, tt, drop = FALSE])
+    } else {
+      A_nt <- ll_things$inf_mat[nuis_idx, test_idx, drop = FALSE]
+      I_nn <- ll_things$inf_mat[nuis_idx, nuis_idx, drop = FALSE]
+      inf_mat <- inf_mat - crossprod(A_nt, .solve_sym_eigen(I_nn, A_nt))
+    }
   }
 
   if (signed) {
     ed <- eigen(inf_mat, symmetric = TRUE)
-    # Numerical floor to avoid taking sqrt of tiny/negative values
-    ev <- pmax(ed$values, .Machine$double.eps)
+    # Floor eigenvalues at a tolerance relative to the largest before taking
+    # 1/sqrt; a floored eigenvalue means the statistic is not reliable in
+    # that direction, so flag it rather than clamp silently (suppressed in
+    # hot loops via check, like the condition diagnostic above)
+    tol <- max(ed$values, .Machine$double.eps) * .Machine$double.eps
+    if (check && any(ed$values < tol)) {
+      warning("Efficient information for the test parameter(s) is nearly ",
+              "singular; the signed statistic may be unreliable.")
+    }
+    ev <- pmax(ed$values, tol)
     inf_root <- ed$vectors %*% (sqrt(ev) * t(ed$vectors))
     test_stat <- solve(inf_root, ll_things$score[test_idx])
   } else {

@@ -160,7 +160,7 @@ test_that("n-side gate matches q-side feasibility decisions", {
   d <- make_crossed()
   b <- c(2, -1)
 
-  # Clearly infeasible: Sigma indefinite
+  # Infeasible: Sigma indefinite
   psi_bad <- c(-100, 0.5, 0.7)
   out_q <- ll_q(psi_bad, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
   out_n <- ll_n(psi_bad, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)

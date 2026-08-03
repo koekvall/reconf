@@ -29,8 +29,8 @@
 #' stored in the precomputations (see \code{?loglik_spectral}). The default
 #' \code{"auto"} picks a dense path iff \eqn{q \ge n} and \eqn{Z} is dense
 #' (more than 10 percent nonzeros), the regime where the sparse path
-#' degenerates -- \code{"spectral"} if \eqn{r = 2} and \code{"n_side"}
-#' otherwise; for sparse \eqn{Z} the q-side is fast even when \eqn{q \gg n}.
+#' degenerates: \code{"spectral"} if \eqn{r = 2}, otherwise \code{"n_side"}.
+#' For sparse \eqn{Z} the q-side is fast even when \eqn{q \gg n}.
 #' When \code{precomp} is supplied, its \code{method} tag takes precedence
 #' and this argument is ignored.
 #'
@@ -48,10 +48,10 @@
 #' is the error variance. The first \eqn{r - 1} elements of \eqn{\psi}
 #' are variances and covariances of random effects.
 #'
-#' Specifically, \eqn{\Psi = \sum_{j = 1}^{r - 1}\psi_j H_j} where each \eqn{H_j}
+#' \eqn{\Psi = \sum_{j = 1}^{r - 1}\psi_j H_j}, where each \eqn{H_j}
 #' is a \eqn{q\times q} matrix of zeros and ones. The argument \code{Hlist} is a list of length
-#' \eqn{r - 1} whose \eqn{j}th element is \eqn{H_j}. This specification implies
-#' each element of \eqn{\Psi} is one of \eqn{\psi_1, \dots, \psi_{r - 1}}.
+#' \eqn{r - 1} whose \eqn{j}th element is \eqn{H_j}. Each element of
+#' \eqn{\Psi} is then one of \eqn{\psi_1, \dots, \psi_{r - 1}}.
 #'
 #' If \code{precomp} is supplied, it must be a list with elements
 #'
@@ -367,7 +367,7 @@ loglik_spectral <- function(d, Yt, Xt, psi, b = NULL, get_val = TRUE,
   if (get_inf) {
     idx <- p + (1:2)
     Xw <- Xt / w
-    # Information for beta: X'Sigma^{-1}X (equals the observed block exactly)
+    # Information for beta: X'Sigma^{-1}X (equals the observed block)
     if (p > 0) I[1:p, 1:p] <- crossprod(Xt, Xw)
     # Expected information I(psi_j, psi_k) = 0.5 tr(Si K_j Si K_k)
     I[idx, idx] <- 0.5 * matrix(c(sum(d^2 / w^2), sum(d / w^2),

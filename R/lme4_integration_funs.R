@@ -49,7 +49,7 @@ get_Hlist_lmer <- function(lmerfit)
 # into the unit-variance model the likelihood code implements, with identical
 # parameters (beta, Psi, psi_r); the offset enters the mean only. All
 # psi-dependent quantities (scores, information, statistics, intervals) are
-# exactly invariant under the transformation; only the log-likelihood value
+# invariant under the transformation; only the log-likelihood value
 # changes, by the constant 0.5 * sum(log(w)). The diagonal scaling leaves
 # Z's sparsity pattern unchanged.
 .lmer_matrices <- function(lmerfit) {

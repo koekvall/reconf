@@ -88,7 +88,7 @@ get_idx_ltri <- function(row, col, n)
 # With method = "n_side", instead precompute for the dense n-by-n likelihood
 # path (loglik_n, loglik_res_n): the concatenated K = [K_1 ... K_{r - 1}] with
 # K_j = Z H_j Z'. The K_j do not depend on psi, so every likelihood
-# evaluation reuses them; this is what makes the n-side path independent of q.
+# evaluation reuses them and the cost is independent of q.
 #
 # With method = "spectral" (requires r = 2, a single structure matrix),
 # precompute for the O(n)-per-evaluation path (loglik_spectral,
@@ -103,10 +103,9 @@ get_idx_ltri <- function(row, col, n)
 # has O(n) off-diagonals however large q is, and the sparse q-side stays as
 # fast or faster than the dense n-side even for q >> n (benchmarked
 # 2026-07-12: at n = 1000, q = 6000 crossed, q-side ~4 ms vs n-side ~150 ms).
-# The dense paths win when Z is dense -- kernel-, kinship-, or spline-type
-# designs -- where the q-side degenerates to dense q x q algebra (same
-# benchmark: 50-140x in favor of n-side). The density threshold is a
-# heuristic; callers can always force a path via method.
+# The dense paths win when Z is dense: the q-side then degenerates to dense
+# q x q algebra (same benchmark: 50-140x in favor of n-side). The density
+# threshold is a heuristic; callers can always force a path via method.
 get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
                         method = c("auto", "q_side", "n_side", "spectral")) {
   method <- match.arg(method)

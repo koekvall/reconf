@@ -67,9 +67,9 @@ Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi
 //' The information matrix includes both \eqn{\beta} and \eqn{\psi} parameters,
 //' with dimensions \eqn{(p + r) \times (p + r)}.
 //'
-//' The caller is responsible for verifying that the parameters are feasible,
-//' that is, that \eqn{\psi_r > 0} and \eqn{\Sigma = Z \Psi Z' + \psi_r I_n} is
-//' positive definite, and for computing \code{A} and \code{ldetB}. Solving for
+//' The caller must verify that the parameters are feasible, that is,
+//' \eqn{\psi_r > 0} and \eqn{\Sigma = Z \Psi Z' + \psi_r I_n} positive
+//' definite, and must compute \code{A} and \code{ldetB}. Solving for
 //' \code{A} with a solver that exploits sparsity in the right-hand side (for
 //' example \code{Matrix::solve}) is much faster than a dense solve when the
 //' random effects are block-structured.
@@ -241,8 +241,8 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
 //' \eqn{\Psi} through \code{H}. The restricted likelihood integrates out the
 //' fixed effects \eqn{\beta}.
 //'
-//' The caller is responsible for verifying feasibility and computing \code{A}
-//' and \code{ldetB}; see \code{?loglik}.
+//' The caller must verify feasibility and compute \code{A} and
+//' \code{ldetB}; see \code{?loglik}.
 //'
 //' \code{A} and \code{H} are received by value (deep copy) rather than as
 //' maps: Eigen's products with blocks of mapped sparse matrices fall back to
@@ -543,7 +543,7 @@ Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
   S(p + r - 1) = 0.5 * (etilde.squaredNorm() - Si.trace());
 
   if (get_inf) {
-    // Information for beta: X'Sigma^{-1}X (equals the observed block exactly)
+    // Information for beta: X'Sigma^{-1}X (equals the observed block)
     if (p > 0) {
       Eigen::MatrixXd W = llt.solve(X);
       I.topLeftCorner(p, p) = X.transpose() * W;

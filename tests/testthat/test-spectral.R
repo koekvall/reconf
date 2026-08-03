@@ -6,7 +6,7 @@ library(Matrix)
 # K = Z H_1 Z' for every psi. They are validated against the q-side path
 # through loglikelihood(), which is itself checked against lme4 and
 # numerical derivatives in test-cpp.R; the dense-Z design below also has
-# q > n, the regime the spectral path is intended for.
+# q > n, the case where method = "auto" selects the spectral path.
 
 # Dense kernel-type design with q > n and a single random-effect variance;
 # Z Z' is positive definite, so psi_1 alone can make Sigma "look" positive
@@ -143,7 +143,7 @@ test_that("spectral derivatives agree with numerical ones (q > n)", {
 test_that("spectral gate matches q-side feasibility decisions", {
   d <- make_dense_r2()
 
-  # Clearly infeasible: Sigma indefinite
+  # Infeasible: Sigma indefinite
   psi_bad <- c(-100, 0.5)
   out_q <- ll_q(psi_bad, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
   out_s <- ll_s(psi_bad, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)

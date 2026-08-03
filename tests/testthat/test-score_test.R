@@ -35,10 +35,9 @@ test_that("score stat near zero when theta_null equals MLE", {
   expect_lt(abs(res[["stat"]]), 0.01)
 })
 
-# ── test rejects clearly absent random effect ────────────────────────────────
+# ── rejects zero variance when between-subject variability is strong ─────────
 
-test_that("random intercept is clearly significant in sleepstudy", {
-  # sleepstudy has strong between-subject variability; should reject H0: var=0
+test_that("random intercept is significant in sleepstudy", {
   res <- score_test_lmer(fit_ri)
   expect_lt(res[["p_val"]], 0.001)
 })

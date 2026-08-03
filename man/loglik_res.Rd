@@ -77,8 +77,8 @@ See \code{?loglik} for the model and the parameterization of
 \eqn{\Psi} through \code{H}. The restricted likelihood integrates out the
 fixed effects \eqn{\beta}.
 
-The caller is responsible for verifying feasibility and computing \code{A}
-and \code{ldetB}; see \code{?loglik}.
+The caller must verify feasibility and compute \code{A} and
+\code{ldetB}; see \code{?loglik}.
 
 \code{A} and \code{H} are received by value (deep copy) rather than as
 maps: Eigen's products with blocks of mapped sparse matrices fall back to

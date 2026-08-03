@@ -245,10 +245,11 @@ score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
     # Efficient information from one Cholesky of the joint (nuisance, test)
     # block: with R'R = I[(n,t),(n,t)], the Schur complement
     # I_tt - I_tn I_nn^{-1} I_nt equals R22'R22, positive semidefinite by
-    # construction. The explicit subtraction cancels catastrophically when
-    # the information is nearly singular -- the near-boundary regime the
-    # method targets -- so it remains only as the fallback when the joint
-    # block is not positive definite (possible for observed information).
+    # construction. The explicit subtraction suffers catastrophic
+    # cancellation when the information is nearly singular, which is the
+    # near-boundary regime this method targets. It remains only as the
+    # fallback when the joint block is not positive definite (possible for
+    # observed information).
     joint_idx <- c(nuis_idx, test_idx)
     ch <- tryCatch(chol(ll_things$inf_mat[joint_idx, joint_idx]),
                    error = function(e) NULL)

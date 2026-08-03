@@ -8,7 +8,7 @@ Standard methods for inference on variance components — Wald intervals and lik
 
 `reconf` implements **score-based confidence intervals** that invert a one-dimensional signed score statistic. The method:
 
-- Works directly on the natural variance/covariance parameterisation (no Cholesky reparameterisation needed)
+- Works directly on the natural variance/covariance parameterisation (no Cholesky reparameterization needed)
 - Handles boundary cases (near-zero variances) without ad-hoc corrections
 - Supports both REML and ML estimation
 - Uses warm-started outward search for computational efficiency

@@ -83,9 +83,8 @@ loglik_psi <- function(Z, ZtZXe, e, H, Psi_r, psi_r, get_val = TRUE,
 
   if(!get_inf){
     # Compute -[ZtZ (I_q - M) * H_1, ..., ZtZ (I_q - M) * H_r] using
-    # recycling, where * denotes elementwise multiplication
-    # The "if" is because the calculation is a byproduct of a more expensive one
-    # (B %*% H) done to get Fisher information
+    # recycling, where * denotes elementwise multiplication. With get_inf
+    # the same quantity is a byproduct of B %*% H below.
     H <- as.matrix(H) * as.vector(B)
 
     s_psi[-r] <- s_psi[-r] + (0.5 / psi_r) * colSums(matrix(Matrix::colSums(H), nrow = q))

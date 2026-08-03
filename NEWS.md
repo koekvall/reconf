@@ -2,6 +2,27 @@
 
 ## New features
 
+* New `statistic` argument for `ci_lmer()` and `ci_all_lmer()`. The default
+  `"score"` is the previous behavior; `"rlrt"` instead inverts the profile
+  restricted likelihood ratio statistic on the extended parameter set, with
+  nuisance parameters maximized over that set as for the score statistic and
+  the reference maximum taken over the same set. For a variance whose
+  extended-set estimate is negative the interval is centered below zero and
+  can exclude the estimate or contain no nonnegative values; warnings flag
+  both cases, and with `nonneg = TRUE` an interval with no nonnegative
+  values is reported as `NA` bounds (possible with probability about
+  (1 - level)/2 under a true zero variance; suggestive of an inadequate
+  covariance structure if it recurs). Experimental: these intervals have no
+  supporting theory at present. Requires `onestep = FALSE`; `ci_all_lmer()`
+  computes the reference maximum once and shares it across parameters.
+* The outward CI search now evaluates the statistic at the search origin
+  instead of assuming it vanishes there. If the estimate is outside the
+  confidence set, which can happen for estimates on the boundary of the
+  parameter space, the search warns and restarts from the extended-set
+  maximizer, where the statistic vanishes. The `nonneg` clamp is applied
+  as a set intersection, so the lower bound cannot exceed the upper bound;
+  an empty intersection is reported as `NA` bounds for either statistic.
+
 * New exported `score_test_all_lmer()`: per-parameter score tests against
   zero, with named rows, p-values, and `print`/`tidy` methods.
 * `ci_lmer()` and `ci_all_lmer()` gain prior-weight and offset support,

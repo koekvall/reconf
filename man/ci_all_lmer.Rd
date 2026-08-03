@@ -11,6 +11,7 @@ ci_all_lmer(
   onestep = FALSE,
   nonneg = TRUE,
   accelerate = TRUE,
+  statistic = c("score", "rlrt"),
   method = c("auto", "q_side", "n_side", "spectral"),
   ...
 )
@@ -34,6 +35,11 @@ at 0 for variance parameters; see \code{\link{ci_lmer}}.}
 
 \item{accelerate}{Logical. If \code{TRUE} (default), use secant-accelerated
 steps in the outward search; see \code{\link{ci_lmer}}.}
+
+\item{statistic}{Character, either \code{"score"} (default) or
+\code{"rlrt"}, selecting which statistic is inverted; see
+\code{\link{ci_lmer}}. The reference maximum needed by \code{"rlrt"} is
+computed once and shared across parameters.}
 
 \item{method}{Likelihood computation path, one of \code{"auto"} (default),
 \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see

@@ -16,6 +16,7 @@ ci_lmer(
   onestep = FALSE,
   nonneg = TRUE,
   accelerate = TRUE,
+  statistic = c("score", "rlrt"),
   method = c("auto", "q_side", "n_side", "spectral"),
   ...
 )
@@ -55,11 +56,14 @@ The one-step update is a trust-region solve with \code{iterlim = 1L} and
 a large radius, so the Newton step is unconstrained. Asymptotically
 equivalent to full profiling but substantially cheaper.}
 
-\item{nonneg}{Logical. If \code{TRUE} (default), clamp the lower CI bound at
-0 for variance parameters (including the residual variance). Covariance
-parameters are unaffected: any real value is feasible for some choice of
-nuisance parameters, so no such constraint applies. Set \code{FALSE} for
-diagnostic purposes.}
+\item{nonneg}{Logical. If \code{TRUE} (default), report for a variance
+parameter (including the residual variance) the intersection of the
+search interval with the nonnegative half-line. Usually this truncates
+the lower bound at 0. If no nonnegative value lies in the interval,
+both bounds are \code{NA} with a warning; see \code{statistic}.
+Covariance parameters are unaffected: any real value is feasible for
+some choice of nuisance parameters. Set \code{FALSE} for diagnostic
+purposes.}
 
 \item{accelerate}{Logical. If \code{TRUE} (default), the outward search
 chooses each step by a secant prediction of the critical-value crossing,
@@ -68,6 +72,24 @@ interval by regula falsi to the resolution of the fixed-step search;
 nuisance warm starts are extrapolated along the accepted path. Typically
 needs 5--10 times fewer profile evaluations per bound. If \code{FALSE},
 every step has length \code{step_size} (the fixed-step search).}
+
+\item{statistic}{Character, either \code{"score"} (default) or
+\code{"rlrt"}. With \code{"score"} the interval inverts the signed score
+statistic standardized by the expected information. With \code{"rlrt"}
+it inverts the profile restricted likelihood ratio statistic on the
+extended parameter set (see Details); nuisance parameters and the
+reference maximum are taken over that set. For a variance whose
+extended-set estimate is negative, the interval is centered below zero.
+It can then exclude the reported estimate or contain no nonnegative
+values; warnings flag both cases, and \code{nonneg = TRUE} reports the
+second as \code{NA} bounds. An interval with no nonnegative values has
+probability about \eqn{\alpha/2} when the true variance is zero;
+recurrence suggests an inadequate covariance structure. The
+\code{"rlrt"} intervals have no supporting theory at present and are
+provided for comparison with the score intervals. \code{lme4::profile}
+profiles the unrestricted likelihood even for a restricted fit, so it
+does not compute this statistic. Requires \code{onestep = FALSE}: the
+likelihood ratio needs fully profiled nuisance parameters.}
 
 \item{method}{Likelihood computation path, one of \code{"auto"} (default),
 \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see
@@ -87,18 +109,28 @@ statistic. The signed score profile is evaluated on a grid and the CI bounds
 are located by linear interpolation at the +/- critical value crossings.
 }
 \details{
-The confidence interval is constructed as the inversion of the one-dimensional
-signed score test statistic. Specifically, the CI at level \eqn{1 - \alpha}
-is \deqn{\{\psi^{(1)} : |T_n(\psi^{(1)})| \leq z_{1-\alpha/2}\},}
-where \eqn{T_n} is the signed score statistic and \eqn{z_{1-\alpha/2}} is the
-corresponding standard normal quantile.
+The confidence interval at level \eqn{1 - \alpha} is
+\deqn{\{\psi^{(1)} : |T_n(\psi^{(1)})| \leq z_{1-\alpha/2}\},}
+where \eqn{T_n} is the signed statistic and \eqn{z_{1-\alpha/2}} the
+standard normal quantile.
+
+Both statistics are defined on the extended parameter set: all covariance
+parameter values, negative variances included, for which the marginal
+covariance matrix of the response is positive definite. A variance
+estimated at zero lies on the boundary of the usual parameter space but
+in the interior of the extended set, where standard asymptotics apply.
 
 The signed score statistic is evaluated along an outward search from the
 MLE, with nuisance parameters optimized at each step from the previous
 step's solution (see \code{accelerate}). The CI bound is located where the
 statistic crosses \eqn{\pm z_{1-\alpha/2}}. Increase \code{num_points} or
 \code{step_size} if a warning is issued about the statistic not crossing
-the critical value.
+the critical value. The statistic is also evaluated at the search origin.
+If it exceeds the critical value there, which can happen when the
+estimate is on the boundary, the confidence set does not contain the
+estimate; the search warns and restarts from the extended-set maximizer,
+where the profile statistic vanishes. An interval lying entirely below
+zero is handled as described under \code{nonneg}.
 
 Prior weights and offsets in the \code{lmer} fit are supported: the model
 is transformed to unit error variance by scaling \code{Y}, \code{X}, and

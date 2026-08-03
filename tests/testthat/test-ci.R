@@ -63,9 +63,9 @@ test_that("score_test_all_lmer returns a named test table", {
 test_that("accelerated and fixed-step searches agree", {
   skip_on_cran()
   # Both searches resolve the crossing to within one step_size (SE/40), so
-  # bounds must agree to that resolution. Guards the secant step logic and
-  # the regula-falsi refinement against regressions such as sign errors in
-  # the slope (which silently degrade one search direction only).
+  # bounds must agree to that resolution. Guards the secant step and the
+  # regula-falsi refinement against sign errors in the slope, which degrade
+  # one search direction only.
   ci_a <- ci_all_lmer(fit_ri, accelerate = TRUE)
   ci_f <- ci_all_lmer(fit_ri, accelerate = FALSE)
   expect_equal(ci_a, ci_f, tolerance = 1e-3)
@@ -149,9 +149,8 @@ test_that("nonneg = FALSE allows negative lower bound for a variance", {
   fit     <- make_tiny_var_fit()
   ci_on   <- suppressWarnings(ci_lmer(fit, test_idx = 1L, nonneg = TRUE))
   ci_off  <- suppressWarnings(ci_lmer(fit, test_idx = 1L, nonneg = FALSE))
-  # Either the raw bound is negative (so clamp changes the answer) or both
-  # agree when the raw bound happens to be nonneg. Both outcomes are valid;
-  # the test enforces that turning off the clamp does not increase the lower.
+  # The raw lower bound need not be negative for this seed; the test
+  # enforces only that turning off the clamp does not increase it.
   expect_lte(ci_off[1, "lower"], ci_on[1, "lower"] + 1e-8)
 })
 
@@ -169,6 +168,126 @@ test_that("all variance lower bounds are nonneg under default", {
   vc <- as.data.frame(VarCorr(fit_rs), order = "lower.tri")
   is_var <- is.na(vc$var2)
   expect_true(all(ci[is_var, "lower"] >= 0))
+})
+
+# ── statistic = "rlrt" ───────────────────────────────────────────────────────
+
+test_that("rlrt intervals are finite and bracket the estimates", {
+  skip_on_cran()
+  ci <- ci_all_lmer(fit_rs, statistic = "rlrt")
+  expect_true(all(is.finite(ci)))
+  expect_true(all(ci[, "lower"] <= ci[, "estimate"]))
+  expect_true(all(ci[, "estimate"] <= ci[, "upper"]))
+})
+
+test_that("rlrt and score intervals roughly agree on sleepstudy", {
+  skip_on_cran()
+  # The statistics are first-order equivalent and all estimates in this fit
+  # are interior. The tolerance is half the score interval's width because
+  # rlrt upper bounds for variances are tighter (1562 vs 2331 for the
+  # intercept variance); sign errors or a wrong reference maximum shift
+  # bounds by far more.
+  ci_r <- ci_all_lmer(fit_rs, statistic = "rlrt")
+  ci_s <- ci_all_lmer(fit_rs, statistic = "score")
+  width <- ci_s[, "upper"] - ci_s[, "lower"]
+  expect_true(all(abs(ci_r - ci_s) / width < 0.5))
+})
+
+test_that("ci_all_lmer(rlrt) matches per-parameter ci_lmer(rlrt)", {
+  skip_on_cran()
+  # ci_all_lmer shares one precomputed reference maximum across parameters;
+  # ci_lmer recomputes it per call. Results must agree.
+  ci_all <- ci_all_lmer(fit_ri, statistic = "rlrt")
+  ci_one <- ci_lmer(fit_ri, test_idx = 2L, statistic = "rlrt")
+  expect_equal(as.numeric(ci_all[2, ]), as.numeric(ci_one[1, ]),
+               tolerance = 1e-6)
+})
+
+test_that("rlrt: accelerated and fixed-step searches agree", {
+  skip_on_cran()
+  ci_a <- ci_all_lmer(fit_ri, statistic = "rlrt", accelerate = TRUE)
+  ci_f <- ci_all_lmer(fit_ri, statistic = "rlrt", accelerate = FALSE)
+  expect_equal(ci_a, ci_f, tolerance = 1e-3)
+})
+
+test_that("rlrt respects the nonneg clamp", {
+  skip_on_cran()
+  fit    <- make_tiny_var_fit()
+  ci_on  <- suppressWarnings(ci_lmer(fit, test_idx = 1L, statistic = "rlrt"))
+  ci_off <- suppressWarnings(ci_lmer(fit, test_idx = 1L, statistic = "rlrt",
+                                     nonneg = FALSE))
+  expect_gte(ci_on[1, "lower"], 0)
+  expect_lte(ci_off[1, "lower"], ci_on[1, "lower"] + 1e-8)
+})
+
+test_that("rlrt rejects onestep = TRUE", {
+  skip_on_cran()
+  expect_error(ci_lmer(fit_ri, test_idx = 1L, statistic = "rlrt",
+                       onestep = TRUE),
+               "onestep")
+})
+
+# ── boundary behavior: negative extended-set estimate ────────────────────────
+# Partial group-centering (c = 0.5) induces negative within-group correlation
+# with implied psi1/psi2 around -0.19, inside the feasibility bound
+# psi1 > -psi2/n_obs, so the extended-set estimate of the group variance is
+# negative while lme4 reports 0. The rlrt interval then lies
+# entirely below zero and its intersection with [0, Inf) is empty.
+
+make_neg_icc_fit <- function(seed = 3L, n_grp = 40L, n_obs = 4L) {
+  set.seed(seed)
+  grp <- factor(rep(seq_len(n_grp), each = n_obs))
+  e   <- rnorm(n_grp * n_obs)
+  y   <- e - 0.5 * ave(e, grp)
+  suppressMessages(suppressWarnings(
+    lmer(y ~ 1 + (1 | grp), data = data.frame(y = y, grp = grp), REML = TRUE)
+  ))
+}
+
+test_that("rlrt: empty nonneg intersection gives NA bounds with a warning", {
+  skip_on_cran()
+  fit <- make_neg_icc_fit()
+  expect_warning(
+    ci <- ci_lmer(fit, test_idx = 1L, statistic = "rlrt"),
+    "no nonnegative values")
+  expect_true(is.na(ci[1, "lower"]))
+  expect_true(is.na(ci[1, "upper"]))
+})
+
+test_that("rlrt: unclamped boundary interval lies entirely below zero", {
+  skip_on_cran()
+  fit <- make_neg_icc_fit()
+  ci <- suppressWarnings(
+    ci_lmer(fit, test_idx = 1L, statistic = "rlrt", nonneg = FALSE))
+  expect_lt(ci[1, "lower"], ci[1, "upper"])
+  expect_lt(ci[1, "upper"], 0)
+})
+
+test_that("score: origin outside the confidence set restarts and reports NA", {
+  skip_on_cran()
+  # The signed score at the estimate exceeds the critical value, so the
+  # search restarts from the extended-set maximizer and the nonneg
+  # intersection is empty.
+  fit <- make_neg_icc_fit()
+  w <- character()
+  ci <- withCallingHandlers(
+    ci_lmer(fit, test_idx = 1L, statistic = "score"),
+    warning = function(cnd) {
+      w <<- c(w, conditionMessage(cnd))
+      invokeRestart("muffleWarning")
+    })
+  expect_true(any(grepl("beyond the critical value", w)))
+  expect_true(any(grepl("no nonnegative values", w)))
+  expect_true(is.na(ci[1, "lower"]) && is.na(ci[1, "upper"]))
+})
+
+test_that("score: unclamped boundary interval lies entirely below zero", {
+  skip_on_cran()
+  fit <- make_neg_icc_fit()
+  ci <- suppressWarnings(
+    ci_lmer(fit, test_idx = 1L, statistic = "score", nonneg = FALSE))
+  expect_lt(ci[1, "lower"], ci[1, "upper"])
+  expect_lt(ci[1, "upper"], 0)
 })
 
 # ── weights and offsets ──────────────────────────────────────────────────────

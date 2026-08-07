@@ -144,16 +144,10 @@ loglikelihood <-function(psi, b = NULL, Y, X = NULL, Z, Hlist, REML = TRUE, get_
                             msg = "REML, get_val, get_score, get_inf, get_beta,
                             and expected should all be logical")
 
-    if(!expected && REML){
-      warning("Observed information not implemented for restricted likelihood;
-              using expected")
-    }
-
     if(get_beta && REML){
       warning("Score or information for beta not available for restricted likelihood")
     }
   }
-  if (!expected && REML) expected <- TRUE
 
   if(p > 0 && is.null(b) && !REML){
     stop("b cannot be NULL when X has positive number of columns unless using REML")
@@ -183,7 +177,8 @@ loglikelihood <-function(psi, b = NULL, Y, X = NULL, Z, Hlist, REML = TRUE, get_
     if (REML) {
       ll_things <- loglik_res_n(K = precomp$K, psi = as.numeric(psi), Y = Y,
                                 X = X, get_val = get_val,
-                                get_score = get_score, get_inf = get_inf)
+                                get_score = get_score, get_inf = get_inf,
+                                expected = expected)
     } else {
       e <- if (p == 0) Y else as.vector(Y - X %*% b)
       ll_things <- loglik_n(K = precomp$K, psi = as.numeric(psi), e = e,
@@ -210,7 +205,8 @@ loglikelihood <-function(psi, b = NULL, Y, X = NULL, Z, Hlist, REML = TRUE, get_
                                        Xt = precomp$Xt, psi = as.numeric(psi),
                                        get_val = get_val,
                                        get_score = get_score,
-                                       get_inf = get_inf)
+                                       get_inf = get_inf,
+                                       expected = expected)
     } else {
       ll_things <- loglik_spectral(d = precomp$d, Yt = precomp$Yt,
                                    Xt = precomp$Xt, psi = as.numeric(psi),
@@ -259,7 +255,8 @@ loglikelihood <-function(psi, b = NULL, Y, X = NULL, Z, Hlist, REML = TRUE, get_
                             ZtY = precomp$ZtY,
                             get_val = get_val,
                             get_score = get_score,
-                            get_inf = get_inf)
+                            get_inf = get_inf,
+                            expected = expected)
   } else{
     # Always compute e from b to ensure consistency with theta
     e <- if(p == 0) Y else as.vector(Y - X %*% b)
@@ -403,6 +400,9 @@ loglik_spectral <- function(d, Yt, Xt, psi, b = NULL, get_val = TRUE,
 #' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
 #' @param get_score If \code{TRUE} the score vector is calculated.
 #' @param get_inf If \code{TRUE}, an information matrix is calculated.
+#' @param expected If \code{TRUE}, the expected information is calculated;
+#'        otherwise the observed, or negative Hessian of the restricted
+#'        log-likelihood.
 #'
 #' @return A list with components \code{value}, \code{score}, \code{inf_mat},
 #' \code{beta}, and \code{I_b_chol} as in \code{?loglik_res}.
@@ -421,7 +421,8 @@ loglik_spectral <- function(d, Yt, Xt, psi, b = NULL, get_val = TRUE,
 #'
 #' @keywords internal
 loglik_res_spectral <- function(d, Yt, Xt, psi, get_val = TRUE,
-                                get_score = TRUE, get_inf = TRUE) {
+                                get_score = TRUE, get_inf = TRUE,
+                                expected = TRUE) {
   n <- length(Yt)
   p <- ncol(Xt)
 
@@ -473,6 +474,13 @@ loglik_res_spectral <- function(d, Yt, Xt, psi, get_val = TRUE,
       I_psi[2, 1] <- I_psi[1, 2]
       I_psi[2, 2] <- sum(1 / w^2) - 2 * sum(m / w) + sum(G2 * G2)
       I_psi <- 0.5 * I_psi
+      if (!expected) {
+        # Observed information: flip the sign of the deterministic part and
+        # add the stochastic terms u_j'P u_k, u_j = K_j etilde (u_2 = etilde)
+        Ue <- cbind(d * etilde, etilde, deparse.level = 0)
+        BtU <- crossprod(B, Ue)
+        I_psi <- crossprod(Ue, Ue / w) - crossprod(BtU) - I_psi
+      }
     }
   }
   list("value" = ll, "score" = s_psi, "inf_mat" = I_psi, "beta" = beta,

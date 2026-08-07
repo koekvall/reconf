@@ -33,7 +33,7 @@ ll_n <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
   K <- reconf:::get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist,
                             method = "n_side")$K
   if (REML) {
-    reconf:::loglik_res_n(K = K, psi = psi, Y = Y, X = X)
+    reconf:::loglik_res_n(K = K, psi = psi, Y = Y, X = X, expected = expected)
   } else {
     e <- as.vector(Y - X %*% b)
     reconf:::loglik_n(K = K, psi = psi, e = e, X = X, expected = expected)
@@ -61,18 +61,20 @@ test_that("n-side agrees with q-side on sleepstudy (ML, expected and observed)",
   }
 })
 
-test_that("n-side agrees with q-side on sleepstudy (REML)", {
+test_that("n-side agrees with q-side on sleepstudy (REML, expected and observed)", {
   fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
   psi_hat <- reconf:::get_psi_hat_lmer(fit)
   Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
   Hlist <- reconf:::get_Hlist_lmer(fit)
 
   for (psi in list(psi_hat, psi_hat * c(1.3, 0.8, 1.1, 0.9))) {
-    out_q <- ll_q(psi, Y, X, Z, Hlist, REML = TRUE)
-    out_n <- ll_n(psi, Y, X, Z, Hlist, REML = TRUE)
-    expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
-    expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    for (expected in c(TRUE, FALSE)) {
+      out_q <- ll_q(psi, Y, X, Z, Hlist, REML = TRUE, expected = expected)
+      out_n <- ll_n(psi, Y, X, Z, Hlist, REML = TRUE, expected = expected)
+      expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
+      expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
+      expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    }
   }
 })
 
@@ -112,11 +114,15 @@ test_that("n-side agrees with q-side in a crossed design with q > n", {
       expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
       expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
     }
-    out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
-    out_n <- ll_n(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
-    expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
-    expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    for (expected in c(TRUE, FALSE)) {
+      out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE,
+                    expected = expected)
+      out_n <- ll_n(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE,
+                    expected = expected)
+      expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
+      expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
+      expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    }
   }
 })
 
@@ -144,13 +150,17 @@ test_that("n-side derivatives agree with numerical ones (q > n)", {
   expect_equal(-numDeriv::hessian(val_ml, d$psi),
                out$inf_mat[(p + 1):(p + r), (p + 1):(p + r)], tolerance = 1e-4)
 
-  # REML: score against the n-side value
+  # REML: score and observed information against the n-side value; the true
+  # psi is not a stationary point, so observed and expected differ
   val_reml <- function(psi) {
     reconf:::loglik_res_n(K = K, psi = psi, Y = d$Y, X = d$X,
                           get_score = FALSE, get_inf = FALSE)$value
   }
-  out_reml <- reconf:::loglik_res_n(K = K, psi = d$psi, Y = d$Y, X = d$X)
+  out_reml <- reconf:::loglik_res_n(K = K, psi = d$psi, Y = d$Y, X = d$X,
+                                    expected = FALSE)
   expect_equal(numDeriv::grad(val_reml, d$psi), out_reml$score,
+               tolerance = 1e-4)
+  expect_equal(-numDeriv::hessian(val_reml, d$psi), out_reml$inf_mat,
                tolerance = 1e-4)
 })
 

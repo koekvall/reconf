@@ -189,10 +189,6 @@ score_stat <- function(theta, test_idx, Y, X, Z, Hlist, REML = TRUE,
       assertthat::assert_that(length(intersect(test_idx, known_idx)) == 0,
                               msg = "test_idx and known_idx should not overlap")
     }
-    if(!expected && REML){
-      warning("Observed information not available for restricted likelihood; using
-              expected.")
-    }
   }
 
   test_idx <- unique(test_idx)

@@ -4,7 +4,16 @@
 \alias{loglik_res_n}
 \title{Restricted log-likelihood via the n-by-n formulation}
 \usage{
-loglik_res_n(K, psi, Y, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE)
+loglik_res_n(
+  K,
+  psi,
+  Y,
+  X,
+  get_val = TRUE,
+  get_score = TRUE,
+  get_inf = TRUE,
+  expected = TRUE
+)
 }
 \arguments{
 \item{K}{Dense \eqn{n \times n(r - 1)} matrix of horizontally concatenated
@@ -22,6 +31,10 @@ element is the error variance \eqn{\psi_r}.}
 \item{get_score}{If \code{TRUE} the score vector is calculated.}
 
 \item{get_inf}{If \code{TRUE}, an information matrix is calculated.}
+
+\item{expected}{If \code{TRUE}, the expected information is calculated;
+otherwise the observed, or negative Hessian of the restricted
+log-likelihood.}
 }
 \value{
 A list with components \code{value}, \code{score}, \code{inf_mat},
@@ -39,8 +52,11 @@ All quantities are computed from the dense factorization of
 \eqn{P = \Sigma^{-1} - \Sigma^{-1} X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}},
 formed explicitly as an \eqn{n \times n} matrix: the restricted score is
 \eqn{0.5\{e'\Sigma^{-1} K_j \Sigma^{-1} e - tr(P K_j)\}} with
-\eqn{e = Y - X\tilde\beta}, and the expected information is
-\eqn{0.5 tr(P K_j P K_k)}.
+\eqn{e = Y - X\tilde\beta}, the expected information is
+\eqn{0.5 tr(P K_j P K_k)}, and the observed information is the expected
+information with the sign flipped plus the stochastic terms
+\eqn{u_j' P u_k}, where \eqn{u_j = K_j \Sigma^{-1} e}
+(\eqn{u_r = \Sigma^{-1} e}).
 
 Feasibility is decided here as in \code{?loglik_n}: at infeasible
 parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,

@@ -226,6 +226,9 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
 //' @param get_val If \code{TRUE}, the value of the loglikelihood is computed.
 //' @param get_score If \code{TRUE} the score vector is calculated.
 //' @param get_inf If \code{TRUE}, an information matrix is calculated.
+//' @param expected If \code{TRUE}, the expected information is calculated;
+//'        otherwise the observed, or negative Hessian of the restricted
+//'        log-likelihood.
 //'
 //' @return A list with components:
 //' \item{value}{The value of the restricted log-likelihood}
@@ -249,6 +252,13 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
 //' slow generic paths in the information computations, and the copies are
 //' cheap relative to the algebra.
 //'
+//' The observed information is the expected information with the sign
+//' flipped plus the stochastic matrix with entries
+//' \eqn{u_j' \Sigma^{-1} Q u_k}, where \eqn{u_j = Z H_j Z' \tilde{e}}
+//' (\eqn{u_r = \tilde{e}}), \eqn{\tilde{e} = \Sigma^{-1}(Y - X\tilde{\beta})},
+//' and \eqn{Q = I_n - X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}}. The added
+//' terms are matrix-vector products, so they cost no more than the score.
+//'
 //' @useDynLib reconf, .registration=TRUE
 //' @import Matrix
 // [[Rcpp::export]]
@@ -266,7 +276,8 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
                       const Eigen::Map<Eigen::VectorXd> ZtY,
                       const bool get_val = true,
                       const bool get_score = true,
-                      const bool get_inf = true)
+                      const bool get_inf = true,
+                      const bool expected = true)
 {
   // Define dimensions
   int n = Y.size();
@@ -320,16 +331,21 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     ll *= -0.5;
   }
 
+  // v = Z'Sigma^{-1}e is shared by the score and the observed information
+  Eigen::VectorXd v;
+  if (get_score || (get_inf && !expected)) {
+    v = Z.transpose() * etilde;
+  }
+
   if (get_score) {
     // Stochastic part of the restricted score for psi
     s_psi(r - 1) = 0.5 * etilde.dot(etilde);
-    Eigen::VectorXd v = Z.transpose() * etilde;
     for (int ii = 0; ii < r - 1; ii++) {
       s_psi(ii) = 0.5 * v.dot(H.middleCols(ii * q, q) * v);
     }
   }
   /////////////////////////////////////////////////////////////////////////////
-  // NOTHING BELOW SHOULD DEPEND ON Y / NONSTOCHASTIC PARTS
+  // NOTHING BELOW DEPENDS ON Y EXCEPT THE expected = false BLOCK AT THE END
   /////////////////////////////////////////////////////////////////////////////
   if (get_inf) {
     // Create matrices used repeatedly
@@ -407,6 +423,38 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
         double t4 = Rp[jj].transpose().cwiseProduct(Rp[kk]).sum();
         I_psi(kk, jj) = 0.5 * (t1 - t2 - t3 + t4);
       }
+    }
+
+    if (!expected) {
+      // Observed information: flip the sign of the deterministic part and
+      // add the stochastic terms u_j' Si Q u_k, u_j = Z H_j Z' etilde
+      // (u_r = etilde). Z'(Si Q)Z = S - G'U^{-1}G as for the traces, and
+      // X'etilde = 0 (the GLS normal equations) gives
+      // X'Si etilde = -XtZ (A v) / psi_r, so no n-vectors are formed.
+      I_psi = -I_psi; // upper triangle; mirrored at the return
+      Eigen::VectorXd av = A * v;
+      Eigen::VectorXd h = (-1.0 / psi_r) * (XtZ * av);   // X'Si etilde
+      Eigen::VectorXd th = llt.solve(h);
+      if (r > 1) {
+        // Columns of W are w_j = H_j v; one pass over H gives them all
+        Eigen::VectorXd w = H.transpose() * v;
+        Eigen::Map<const Eigen::MatrixXd> W(w.data(), q, r - 1);
+        Eigen::MatrixXd Sw = S * W;
+        Eigen::MatrixXd Gw = G * W;
+        Eigen::MatrixXd UGw = llt.solve(Gw);
+        // z = Z'(Si Q) etilde
+        Eigen::VectorXd z = (1.0 / psi_r) * (v - ZtZ * av) -
+          G.transpose() * th;
+        for (int jj = 0; jj < r - 1; jj++) {
+          I_psi(jj, r - 1) += W.col(jj).dot(z);
+          for (int kk = 0; kk <= jj; kk++) {
+            I_psi(kk, jj) += W.col(kk).dot(Sw.col(jj)) -
+              Gw.col(kk).dot(UGw.col(jj));
+          }
+        }
+      }
+      I_psi(r - 1, r - 1) += (etilde.squaredNorm() - v.dot(av)) / psi_r -
+        h.dot(th);
     }
   } else if (get_score) {
     // Terms for S(psi_j); same rank-p decomposition as in the get_inf branch
@@ -602,6 +650,9 @@ Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
 //' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
 //' @param get_score If \code{TRUE} the score vector is calculated.
 //' @param get_inf If \code{TRUE}, an information matrix is calculated.
+//' @param expected If \code{TRUE}, the expected information is calculated;
+//'        otherwise the observed, or negative Hessian of the restricted
+//'        log-likelihood.
 //'
 //' @return A list with components \code{value}, \code{score}, \code{inf_mat},
 //' \code{beta}, and \code{I_b_chol} as in \code{?loglik_res}.
@@ -611,8 +662,11 @@ Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
 //' \eqn{P = \Sigma^{-1} - \Sigma^{-1} X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}},
 //' formed explicitly as an \eqn{n \times n} matrix: the restricted score is
 //' \eqn{0.5\{e'\Sigma^{-1} K_j \Sigma^{-1} e - tr(P K_j)\}} with
-//' \eqn{e = Y - X\tilde\beta}, and the expected information is
-//' \eqn{0.5 tr(P K_j P K_k)}.
+//' \eqn{e = Y - X\tilde\beta}, the expected information is
+//' \eqn{0.5 tr(P K_j P K_k)}, and the observed information is the expected
+//' information with the sign flipped plus the stochastic terms
+//' \eqn{u_j' P u_k}, where \eqn{u_j = K_j \Sigma^{-1} e}
+//' (\eqn{u_r = \Sigma^{-1} e}).
 //'
 //' Feasibility is decided here as in \code{?loglik_n}: at infeasible
 //' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
@@ -627,7 +681,8 @@ Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
                         const Eigen::Map<Eigen::MatrixXd> X,
                         const bool get_val = true,
                         const bool get_score = true,
-                        const bool get_inf = true) {
+                        const bool get_inf = true,
+                        const bool expected = true) {
   // Define dimensions
   const int n = Y.size();
   const int p = X.cols();
@@ -687,10 +742,18 @@ Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
     Eigen::MatrixXd P = llt.solve(Eigen::MatrixXd::Identity(n, n));
     P.noalias() -= W * llt_U.solve(W.transpose());
 
+    // u_j = K_j etilde (u_r = etilde) drive the stochastic parts of both
+    // the score and the observed information, so they are formed once
+    Eigen::MatrixXd Ue(n, r);
+    for (int jj = 0; jj < r - 1; jj++) {
+      Ue.col(jj) = K.middleCols(jj * n, n) * etilde;
+    }
+    Ue.col(r - 1) = etilde;
+
     // Score for psi_j: 0.5 (etilde' K_j etilde - tr(P K_j)); P and K_j are
     // symmetric so the trace is an elementwise product sum
     for (int jj = 0; jj < r - 1; jj++) {
-      s_psi(jj) = 0.5 * (etilde.dot(K.middleCols(jj * n, n) * etilde) -
+      s_psi(jj) = 0.5 * (etilde.dot(Ue.col(jj)) -
         P.cwiseProduct(K.middleCols(jj * n, n)).sum());
     }
     s_psi(r - 1) = 0.5 * (etilde.squaredNorm() - P.trace());
@@ -707,6 +770,11 @@ Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
         for (int ii = 0; ii <= jj; ii++) {
           I_psi(ii, jj) = 0.5 * PK[ii].cwiseProduct(PK[jj].transpose()).sum();
         }
+      }
+      if (!expected) {
+        // Observed information: flip the sign of the deterministic block
+        // and add the stochastic terms u_j' P u_k
+        I_psi = -I_psi + Ue.transpose() * (P * Ue);
       }
       I_psi = I_psi.selfadjointView<Eigen::Upper>();
     }

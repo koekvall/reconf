@@ -95,6 +95,9 @@ loglik <- function(A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, g
 #' @param get_val If \code{TRUE}, the value of the loglikelihood is computed.
 #' @param get_score If \code{TRUE} the score vector is calculated.
 #' @param get_inf If \code{TRUE}, an information matrix is calculated.
+#' @param expected If \code{TRUE}, the expected information is calculated;
+#'        otherwise the observed, or negative Hessian of the restricted
+#'        log-likelihood.
 #'
 #' @return A list with components:
 #' \item{value}{The value of the restricted log-likelihood}
@@ -118,10 +121,17 @@ loglik <- function(A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, g
 #' slow generic paths in the information computations, and the copies are
 #' cheap relative to the algebra.
 #'
+#' The observed information is the expected information with the sign
+#' flipped plus the stochastic matrix with entries
+#' \eqn{u_j' \Sigma^{-1} Q u_k}, where \eqn{u_j = Z H_j Z' \tilde{e}}
+#' (\eqn{u_r = \tilde{e}}), \eqn{\tilde{e} = \Sigma^{-1}(Y - X\tilde{\beta})},
+#' and \eqn{Q = I_n - X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}}. The added
+#' terms are matrix-vector products, so they cost no more than the score.
+#'
 #' @useDynLib reconf, .registration=TRUE
 #' @import Matrix
-loglik_res <- function(A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val = TRUE, get_score = TRUE, get_inf = TRUE) {
-    .Call(`_reconf_loglik_res`, A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val, get_score, get_inf)
+loglik_res <- function(A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
+    .Call(`_reconf_loglik_res`, A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val, get_score, get_inf, expected)
 }
 
 #' Log-likelihood via the n-by-n formulation
@@ -181,6 +191,9 @@ loglik_n <- function(K, psi, e, X, get_val = TRUE, get_score = TRUE, get_inf = T
 #' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
 #' @param get_score If \code{TRUE} the score vector is calculated.
 #' @param get_inf If \code{TRUE}, an information matrix is calculated.
+#' @param expected If \code{TRUE}, the expected information is calculated;
+#'        otherwise the observed, or negative Hessian of the restricted
+#'        log-likelihood.
 #'
 #' @return A list with components \code{value}, \code{score}, \code{inf_mat},
 #' \code{beta}, and \code{I_b_chol} as in \code{?loglik_res}.
@@ -190,8 +203,11 @@ loglik_n <- function(K, psi, e, X, get_val = TRUE, get_score = TRUE, get_inf = T
 #' \eqn{P = \Sigma^{-1} - \Sigma^{-1} X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}},
 #' formed explicitly as an \eqn{n \times n} matrix: the restricted score is
 #' \eqn{0.5\{e'\Sigma^{-1} K_j \Sigma^{-1} e - tr(P K_j)\}} with
-#' \eqn{e = Y - X\tilde\beta}, and the expected information is
-#' \eqn{0.5 tr(P K_j P K_k)}.
+#' \eqn{e = Y - X\tilde\beta}, the expected information is
+#' \eqn{0.5 tr(P K_j P K_k)}, and the observed information is the expected
+#' information with the sign flipped plus the stochastic terms
+#' \eqn{u_j' P u_k}, where \eqn{u_j = K_j \Sigma^{-1} e}
+#' (\eqn{u_r = \Sigma^{-1} e}).
 #'
 #' Feasibility is decided here as in \code{?loglik_n}: at infeasible
 #' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
@@ -199,7 +215,7 @@ loglik_n <- function(K, psi, e, X, get_val = TRUE, get_score = TRUE, get_inf = T
 #' information are zero, and \code{beta} and \code{I_b_chol} are \code{NA}.
 #'
 #' @useDynLib reconf, .registration=TRUE
-loglik_res_n <- function(K, psi, Y, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE) {
-    .Call(`_reconf_loglik_res_n`, K, psi, Y, X, get_val, get_score, get_inf)
+loglik_res_n <- function(K, psi, Y, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
+    .Call(`_reconf_loglik_res_n`, K, psi, Y, X, get_val, get_score, get_inf, expected)
 }
 

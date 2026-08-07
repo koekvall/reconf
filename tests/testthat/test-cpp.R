@@ -64,15 +64,22 @@ test_that("analytical REML score agrees with numerical gradient", {
   expect_equal(num_score, ana_score, tolerance = 1e-4)
 })
 
-test_that("analytical REML expected information agrees with negative numerical Hessian", {
+test_that("analytical REML observed information agrees with negative numerical Hessian", {
   skip_on_cran()
   skip_if_not_installed("numDeriv")
-  num_hess <- -numDeriv::hessian(val_reml, psi_reml)
-  ana_hess <- reconf:::loglikelihood(psi = psi_reml, Y = Y, X = X, Z = Z,
-                                     Hlist = Hlist, REML = TRUE,
-                                     get_val = FALSE, get_score = FALSE,
-                                     get_inf = TRUE, expected = TRUE)$inf_mat
-  expect_equal(num_hess, ana_hess, tolerance = 1e-4)
+  # Checked at the REML estimate and away from it, where observed and
+  # expected differ by about 30 percent. At the estimate they nearly
+  # coincide, but only because sleepstudy is balanced; do not compare the
+  # numerical Hessian to the expected information on that basis.
+  for (psi in list(psi_reml, psi_reml * c(1.4, 0.7, 1.2, 0.8))) {
+    num_hess <- -numDeriv::hessian(val_reml, psi)
+    ana_hess <- reconf:::loglikelihood(psi = psi, Y = Y, X = X, Z = Z,
+                                       Hlist = Hlist, REML = TRUE,
+                                       get_val = FALSE, get_score = FALSE,
+                                       get_inf = TRUE,
+                                       expected = FALSE)$inf_mat
+    expect_equal(num_hess, ana_hess, tolerance = 1e-4)
+  }
 })
 
 # ── R and C++ implementations agree ──────────────────────────────────────────

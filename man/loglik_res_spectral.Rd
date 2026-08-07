@@ -11,7 +11,8 @@ loglik_res_spectral(
   psi,
   get_val = TRUE,
   get_score = TRUE,
-  get_inf = TRUE
+  get_inf = TRUE,
+  expected = TRUE
 )
 }
 \arguments{
@@ -29,6 +30,10 @@ is the error variance.}
 \item{get_score}{If \code{TRUE} the score vector is calculated.}
 
 \item{get_inf}{If \code{TRUE}, an information matrix is calculated.}
+
+\item{expected}{If \code{TRUE}, the expected information is calculated;
+otherwise the observed, or negative Hessian of the restricted
+log-likelihood.}
 }
 \value{
 A list with components \code{value}, \code{score}, \code{inf_mat},

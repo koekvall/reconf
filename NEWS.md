@@ -34,6 +34,10 @@
   and `Z` is dense, or an `O(n)`-per-evaluation spectral path when `r = 2`.
   On a dense genomic model (n = 742, q = 1484) one evaluation drops from
   6.8 s to 0.07 s.
+* `expected = FALSE` now works with the restricted likelihood: all three
+  computational paths return the observed information, where previously a
+  warning was issued and the expected information used. The added cost is
+  of the same order as the score.
 * `tidy()` methods (broom-style) and `print` methods for the confidence
   interval and score-test objects.
 

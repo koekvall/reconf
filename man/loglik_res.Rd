@@ -19,7 +19,8 @@ loglik_res(
   ZtY,
   get_val = TRUE,
   get_score = TRUE,
-  get_inf = TRUE
+  get_inf = TRUE,
+  expected = TRUE
 )
 }
 \arguments{
@@ -56,6 +57,10 @@ derivatives of \eqn{\Psi} (see details) of class \code{dgCMatrix}.}
 \item{get_score}{If \code{TRUE} the score vector is calculated.}
 
 \item{get_inf}{If \code{TRUE}, an information matrix is calculated.}
+
+\item{expected}{If \code{TRUE}, the expected information is calculated;
+otherwise the observed, or negative Hessian of the restricted
+log-likelihood.}
 }
 \value{
 A list with components:
@@ -84,4 +89,11 @@ The caller must verify feasibility and compute \code{A} and
 maps: Eigen's products with blocks of mapped sparse matrices fall back to
 slow generic paths in the information computations, and the copies are
 cheap relative to the algebra.
+
+The observed information is the expected information with the sign
+flipped plus the stochastic matrix with entries
+\eqn{u_j' \Sigma^{-1} Q u_k}, where \eqn{u_j = Z H_j Z' \tilde{e}}
+(\eqn{u_r = \tilde{e}}), \eqn{\tilde{e} = \Sigma^{-1}(Y - X\tilde{\beta})},
+and \eqn{Q = I_n - X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}}. The added
+terms are matrix-vector products, so they cost no more than the score.
 }

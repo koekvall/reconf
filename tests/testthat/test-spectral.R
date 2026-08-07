@@ -28,7 +28,8 @@ ll_s <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
   pc <- reconf:::get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist,
                              method = "spectral")
   if (REML) {
-    reconf:::loglik_res_spectral(d = pc$d, Yt = pc$Yt, Xt = pc$Xt, psi = psi)
+    reconf:::loglik_res_spectral(d = pc$d, Yt = pc$Yt, Xt = pc$Xt, psi = psi,
+                                 expected = expected)
   } else {
     reconf:::loglik_spectral(d = pc$d, Yt = pc$Yt, Xt = pc$Xt, psi = psi,
                              b = b, expected = expected)
@@ -55,11 +56,13 @@ test_that("spectral agrees with q-side on sleepstudy (ML, REML)", {
       expect_equal(out_s$score, out_q$score, tolerance = 1e-6)
       expect_equal(out_s$inf_mat, out_q$inf_mat, tolerance = 1e-6)
     }
-    out_q <- ll_q(psi, Y, X, Z, Hlist, REML = TRUE)
-    out_s <- ll_s(psi, Y, X, Z, Hlist, REML = TRUE)
-    expect_equal(out_s$value, out_q$value, tolerance = 1e-8)
-    expect_equal(out_s$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_s$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    for (expected in c(TRUE, FALSE)) {
+      out_q <- ll_q(psi, Y, X, Z, Hlist, REML = TRUE, expected = expected)
+      out_s <- ll_s(psi, Y, X, Z, Hlist, REML = TRUE, expected = expected)
+      expect_equal(out_s$value, out_q$value, tolerance = 1e-8)
+      expect_equal(out_s$score, out_q$score, tolerance = 1e-6)
+      expect_equal(out_s$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    }
   }
 })
 
@@ -80,11 +83,15 @@ test_that("spectral agrees with q-side in a dense design with q > n", {
       expect_equal(out_s$score, out_q$score, tolerance = 1e-6)
       expect_equal(out_s$inf_mat, out_q$inf_mat, tolerance = 1e-6)
     }
-    out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
-    out_s <- ll_s(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
-    expect_equal(out_s$value, out_q$value, tolerance = 1e-8)
-    expect_equal(out_s$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_s$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    for (expected in c(TRUE, FALSE)) {
+      out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE,
+                    expected = expected)
+      out_s <- ll_s(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE,
+                    expected = expected)
+      expect_equal(out_s$value, out_q$value, tolerance = 1e-8)
+      expect_equal(out_s$score, out_q$score, tolerance = 1e-6)
+      expect_equal(out_s$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    }
   }
 })
 
@@ -127,14 +134,17 @@ test_that("spectral derivatives agree with numerical ones (q > n)", {
                out$inf_mat[(p + 1):(p + 2), (p + 1):(p + 2)],
                tolerance = 1e-4)
 
-  # REML: score against the spectral value
+  # REML: score and observed information against the spectral value; the
+  # true psi is not a stationary point, so observed and expected differ
   val_reml <- function(psi) {
     reconf:::loglik_res_spectral(d = pc$d, Yt = pc$Yt, Xt = pc$Xt, psi = psi,
                                  get_score = FALSE, get_inf = FALSE)$value
   }
   out_reml <- reconf:::loglik_res_spectral(d = pc$d, Yt = pc$Yt, Xt = pc$Xt,
-                                           psi = d$psi)
+                                           psi = d$psi, expected = FALSE)
   expect_equal(numDeriv::grad(val_reml, d$psi), out_reml$score,
+               tolerance = 1e-4)
+  expect_equal(-numDeriv::hessian(val_reml, d$psi), out_reml$inf_mat,
                tolerance = 1e-4)
 })
 

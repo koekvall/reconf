@@ -28,9 +28,18 @@
 #'   up computation (see \code{?get_precomp}). If \code{NULL}, quantities are
 #'   computed internally.
 #' @param rinit Initial trust-region radius passed to \code{\link[trust]{trust}}.
-#'   Default is 1.
+#'   Default is 1. With the default \code{parscale}, radii are lengths in the
+#'   diagonal information metric at \code{start_val}, so 1 is roughly one
+#'   standard error.
 #' @param rmax Maximum trust-region radius passed to \code{\link[trust]{trust}}.
-#'   Default is 100.
+#'   Default is 100, in the same units as \code{rinit}.
+#' @param parscale Numeric vector of positive scaling factors for the free
+#'   parameters, passed to \code{\link[trust]{trust}}; the trust region is
+#'   \eqn{\|diag(parscale) s\| \le r} in the step \eqn{s}. If \code{NULL}
+#'   (default), the square root of the diagonal of the information matrix at
+#'   \code{start_val} is used, so the region approximates a ball in the
+#'   information metric; if that diagonal is not finite and positive, no
+#'   rescaling is done.
 #' @param warn_nonconv Logical. If \code{TRUE} (default), a warning is issued
 #'   when the trust-region optimizer does not converge. Set to \code{FALSE}
 #'   when non-convergence is expected by design (e.g., when \code{iterlim = 1L}
@@ -53,7 +62,8 @@
 #' @keywords internal
 maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
                              REML = TRUE, precomp = NULL,
-                             rinit = 1, rmax = 100, warn_nonconv = TRUE,
+                             rinit = 1, rmax = 100, parscale = NULL,
+                             warn_nonconv = TRUE,
                              check = TRUE, ...) {
   r <- length(Hlist) + 1
   p <- ncol(X)
@@ -84,8 +94,20 @@ maximize_loglik <- function(start_val, opt_idx, Y, X, Z, Hlist, expected = TRUE,
          "hessian" = as.matrix(ll_things$inf_mat[opt_idx, opt_idx]))
   }
 
-  fit <- trust::trust(objfun = obj_fun, parinit = start_val[opt_idx],
-                      rinit = rinit, rmax = rmax, ...)
+  if (is.null(parscale)) {
+    # trust's region is ||diag(parscale) s|| <= r; the square root of the
+    # information diagonal at the start makes it the diagonal information
+    # metric there.
+    ps <- sqrt(diag(as.matrix(obj_fun(start_val[opt_idx])$hessian)))
+    if (all(is.finite(ps)) && all(ps > 0) && all(is.finite(1 / ps))) {
+      parscale <- ps
+    }
+  }
+
+  trust_args <- list(objfun = obj_fun, parinit = start_val[opt_idx],
+                     rinit = rinit, rmax = rmax, ...)
+  if (!is.null(parscale)) trust_args$parscale <- parscale
+  fit <- do.call(trust::trust, trust_args)
 
   if (!fit$converged && warn_nonconv) {
     warning("Optimization did not converge. Results may be unreliable. ",

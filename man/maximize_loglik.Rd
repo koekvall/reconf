@@ -16,6 +16,7 @@ maximize_loglik(
   precomp = NULL,
   rinit = 1,
   rmax = 100,
+  parscale = NULL,
   warn_nonconv = TRUE,
   check = TRUE,
   ...
@@ -56,10 +57,20 @@ up computation (see \code{?get_precomp}). If \code{NULL}, quantities are
 computed internally.}
 
 \item{rinit}{Initial trust-region radius passed to \code{\link[trust]{trust}}.
-Default is 1.}
+Default is 1. With the default \code{parscale}, radii are lengths in the
+diagonal information metric at \code{start_val}, so 1 is roughly one
+standard error.}
 
 \item{rmax}{Maximum trust-region radius passed to \code{\link[trust]{trust}}.
-Default is 100.}
+Default is 100, in the same units as \code{rinit}.}
+
+\item{parscale}{Numeric vector of positive scaling factors for the free
+parameters, passed to \code{\link[trust]{trust}}; the trust region is
+\eqn{\|diag(parscale) s\| \le r} in the step \eqn{s}. If \code{NULL}
+(default), the square root of the diagonal of the information matrix at
+\code{start_val} is used, so the region approximates a ball in the
+information metric; if that diagonal is not finite and positive, no
+rescaling is done.}
 
 \item{warn_nonconv}{Logical. If \code{TRUE} (default), a warning is issued
 when the trust-region optimizer does not converge. Set to \code{FALSE}

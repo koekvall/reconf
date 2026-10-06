@@ -57,9 +57,11 @@ The parameter ordering follows `as.data.frame(VarCorr(fit), order = "lower.tri")
 
 ## References
 
-- **[Main reference]** Shedden, M. and Ekvall, K. O. Reliable score-based
-  confidence intervals for covariance parameters in linear mixed models.
-  *In preparation.* Describes the methods implemented in this package.
+- **[Main reference]** Shedden, M. and Ekvall, K. O. (2026). Score-based
+  confidence intervals for variance-covariance parameters in linear mixed
+  models. *arXiv preprint.*
+  [arXiv:2610.04181](https://arxiv.org/abs/2610.04181). Describes the
+  methods implemented in this package.
 - **[Background / supporting theory]** Ekvall, K. O. and Bottai, M. (2026).
   Uniform inference in linear mixed models. *Biometrika* 113(1), asaf079.
   [doi:10.1093/biomet/asaf079](https://doi.org/10.1093/biomet/asaf079)

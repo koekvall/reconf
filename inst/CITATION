@@ -1,15 +1,16 @@
 citHeader("To cite reconf in publications use:")
 
 bibentry(
-  bibtype = "Unpublished",
+  bibtype = "Misc",
   title   = "Score-based confidence intervals for variance-covariance parameters in linear mixed models",
   author  = c(person("Matias", "Shedden"),
               person("Karl Oskar", "Ekvall")),
   year    = "2026",
-  note    = "In preparation",
+  note    = "arXiv preprint arXiv:2610.04181",
+  doi     = "10.48550/arXiv.2610.04181",
   textVersion = paste(
     "Shedden, M. and Ekvall, K. O. (2026).",
     "Score-based confidence intervals for variance-covariance parameters",
-    "in linear mixed models. In preparation."
+    "in linear mixed models. arXiv preprint arXiv:2610.04181."
   )
 )

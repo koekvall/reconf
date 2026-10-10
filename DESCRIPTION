@@ -3,9 +3,9 @@ Title: Confidence Intervals for Random Effect Parameters in Linear Mixed Models
 Version: 0.2.0
 Authors@R: c(
     person("Karl Oskar", "Ekvall", email = "k.o.ekvall@gmail.com",
-    role = c("aut", "cre")),
-    person("Yiqiao", "Zhang", email = "yiqiaozhang@ufl.edu", role = "aut"),
-    person("Matias", "Shedden", email = "sheddenmatias@ufl.edu", role = "ctb"))
+    role = c("aut", "cre", "cph")),
+    person("Yiqiao", "Zhang", role = "ctb"),
+    person("Matias", "Shedden", role = "ctb"))
 Description: Computes score-based confidence intervals and hypothesis tests
     for variance and covariance parameters of random effects in linear mixed
     models fitted with 'lme4'. The intervals invert the efficient score test

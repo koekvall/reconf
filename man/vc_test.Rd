@@ -15,12 +15,12 @@ vc_test(
 )
 }
 \arguments{
-\item{object}{a fitted linear mixed model, currently of class
-\code{lmerMod} from \code{lme4::lmer}, or a \code{\link{vc_model}}.}
+\item{object}{a fitted linear mixed model of class \code{lmerMod} from
+\code{lme4::lmer}, or a \code{\link{vc_model}}.}
 
 \item{parm}{the tested parameters, as names or indices as in
 \code{\link{vc_ci}}. If \code{NULL}, all random-effect covariance
-parameters.}
+parameters not in \code{known}.}
 
 \item{null_value}{values of the tested parameters under the null
 hypothesis, recycled to the length of \code{parm}.}
@@ -29,15 +29,18 @@ hypothesis, recycled to the length of \code{parm}.}
 observed information, both in the statistic and in the maximization over
 nuisance parameters.}
 
-\item{known}{parameters, as for \code{parm}, held fixed at their estimates
-instead of being treated as nuisance parameters.}
+\item{known}{parameters, as for \code{parm}, held fixed at their
+estimates.}
 
 \item{method}{computational method for the likelihood: \code{"auto"},
 \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}. See Details.
 A \code{vc_model} carries the method it was built with.}
 
-\item{...}{arguments passed to the optimizer \code{\link[trust]{trust}}.
-The default \code{iterlim} is 1000.}
+\item{...}{arguments passed to the optimizer \code{\link[trust]{trust}}:
+\code{rinit}, \code{rmax}, \code{iterlim}, \code{fterm}, and
+\code{mterm}; and \code{warn_nonconv}, which if \code{FALSE} suppresses
+the warning when the optimizer does not converge. The default
+\code{iterlim} is 1000.}
 }
 \value{
 An object of class \code{"htest"} with components
@@ -52,9 +55,10 @@ Computes the score test statistic for a hypothesis about the covariance
 parameters of a linear mixed model.
 }
 \details{
-The statistic is evaluated at the maximizer of the likelihood
-with the tested parameters at their null values and the parameters in
-\code{known} at their estimates, and is standardized by the efficient
+The statistic is the profile score statistic: the score for the
+tested parameters, evaluated at the maximizer of the likelihood with the
+tested parameters at their null values and the parameters in
+\code{known} at their estimates, and standardized by the efficient
 information. The maximization is over the other covariance parameters
 and, for a maximum likelihood fit, the fixed effects. It starts from the
 estimates in the model, with the covariances of a random effect

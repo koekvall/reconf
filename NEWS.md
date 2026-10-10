@@ -29,6 +29,13 @@
   confidence set, the search warns and restarts from the extended-set
   maximizer. The `nonneg` clamp is applied as a set intersection; an empty
   intersection gives `NA` bounds and a warning.
+* When no bound is found within the search distance, the warning reports
+  the statistic at the end of the search. The bound is infinite if the
+  statistic levels off short of the critical value, as for a variance whose
+  grouping factor has few levels.
+* `vc_ci()` and `vc_test()` reject misnamed optimizer arguments and invalid
+  flags instead of passing them on, and the default `parm` excludes the
+  parameters in `known`.
 * Prior weights and offsets in lme4 fits are supported, handled exactly by
   transforming Y, X, and Z with the square-root weights.
 * The outward search chooses step lengths by secant extrapolation, each
@@ -64,8 +71,8 @@
   vector with elements `stat`, `p_val`, and `df`. It takes `null_value`,
   the values of the tested parameters (default 0), in place of the full
   parameter vector `theta_null`. The arguments `efficient` and `profile` are
-  removed; the statistic is the efficient score statistic at the maximizer
-  over the nuisance parameters.
+  removed; the statistic is the profile score statistic, standardized by the
+  efficient information.
 * For maximum likelihood fits the fixed effects are profiled out of the
   likelihood by generalized least squares, which leaves the statistics
   unchanged.

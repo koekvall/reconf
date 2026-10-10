@@ -1,19 +1,18 @@
-#' Maximize log-likelihood with respect to specified parameters
+#' Maximize the log-likelihood over a subset of the covariance parameters
 #'
-#' Optimizes a subset of the covariance parameters of a linear mixed effects
-#' model while holding the others fixed. Uses the trust region algorithm for
-#' optimization.
+#' Maximizes the log-likelihood over the covariance parameters in
+#' \code{opt_idx}, holding the others fixed, by the trust region method of
+#' \code{\link[trust]{trust}}.
 #'
 #' @param start_val Numeric vector of starting values for the covariance
 #'   parameters \eqn{\psi}, of length \eqn{r}.
-#' @param opt_idx Integer vector specifying which elements of \code{start_val}
-#'   to optimize. All other parameters are held fixed at their starting values.
-#'   Must have length > 0 and contain unique positive integers not exceeding
-#'   \code{length(start_val)}.
+#' @param opt_idx Indices of the elements of \code{start_val} to maximize
+#'   over; the others are held at their starting values. Unique positive
+#'   integers, at most \code{length(start_val)}.
 #' @param ll The log-likelihood as a function of \eqn{\psi}, from
 #'   \code{make_loglik}.
-#' @param expected Logical. If \code{TRUE}, use expected Fisher information
-#'   matrix; otherwise use observed information. Default is \code{TRUE}.
+#' @param expected Logical. If \code{TRUE}, the expected information is the
+#'   Hessian of the objective; otherwise the observed information.
 #' @param rinit Initial trust-region radius passed to \code{\link[trust]{trust}}.
 #'   Default is 1. With the default \code{parscale}, radii are lengths in the
 #'   diagonal information metric at \code{start_val}, so 1 is roughly one
@@ -24,29 +23,33 @@
 #'   parameters, passed to \code{\link[trust]{trust}}; the trust region is
 #'   \eqn{\|diag(parscale) s\| \le r} in the step \eqn{s}. If \code{NULL}
 #'   (default), the square root of the diagonal of the information matrix at
-#'   \code{start_val} is used, so the region approximates a ball in the
-#'   information metric; if that diagonal is not finite and positive, no
-#'   rescaling is done.
+#'   \code{start_val} when that is finite and positive, so the region
+#'   approximates a ball in the information metric, and otherwise the
+#'   default of \code{trust}.
+#' @param iterlim Maximum number of iterations passed to
+#'   \code{\link[trust]{trust}}. Default is 1000: profiling far from the
+#'   estimates can require many cheap iterations along nearly flat
+#'   directions, where the trust-region method converges linearly.
 #' @param warn_nonconv Logical. If \code{TRUE} (default), a warning is issued
-#'   when the trust-region optimizer does not converge. Set to \code{FALSE}
-#'   when non-convergence is expected by design (e.g., when \code{iterlim = 1L}
-#'   is used for a one-step update).
+#'   when the optimizer does not converge; \code{FALSE} for the one-step
+#'   update with \code{iterlim = 1}.
 #' @param check If \code{TRUE} (default), validate arguments. Internal callers
 #'   in loops set \code{FALSE} to skip redundant validation.
-#' @param ... Additional arguments passed to \code{\link[trust]{trust}} optimizer,
-#'   such as tolerance settings or iteration limits.
+#' @param ... Additional arguments passed to \code{\link[trust]{trust}}, such
+#'   as the tolerances \code{fterm} and \code{mterm}.
 #'
 #' @return A list with components:
-#'   \item{arg}{Numeric vector of optimized parameter values. Parameters not in
-#'     \code{opt_idx} retain their starting values from \code{start_val}.}
-#'   \item{value}{The maximized log-likelihood value.}
-#'   \item{conv}{Logical indicating whether the optimization converged.}
-#'   \item{iter}{Integer giving the number of iterations performed.}
+#'   \item{arg}{The parameters, with those in \code{opt_idx} at the maximizer
+#'     and the others at their values in \code{start_val}.}
+#'   \item{value}{The maximized log-likelihood.}
+#'   \item{conv}{Logical, whether the optimizer converged.}
+#'   \item{iter}{The number of iterations.}
 #'
 #' @noRd
 maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
                             rinit = 1, rmax = 100, parscale = NULL,
-                            warn_nonconv = TRUE, check = TRUE, ...) {
+                            iterlim = 1000L, warn_nonconv = TRUE,
+                            check = TRUE, ...) {
   if (check) {
     .check_psi(start_val, r = attr(ll, "r"))
     .check_idx(opt_idx, "opt_idx", length(start_val), unique = TRUE)
@@ -67,13 +70,13 @@ maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
     # information diagonal at the start makes it the diagonal information
     # metric there.
     ps <- sqrt(diag(as.matrix(obj_fun(start_val[opt_idx])$hessian)))
-    if (all(is.finite(ps)) && all(ps > 0) && all(is.finite(1 / ps))) {
+    if (all(is.finite(ps)) && all(ps > 0)) {
       parscale <- ps
     }
   }
 
   trust_args <- list(objfun = obj_fun, parinit = start_val[opt_idx],
-                     rinit = rinit, rmax = rmax, ...)
+                     rinit = rinit, rmax = rmax, iterlim = iterlim, ...)
   if (!is.null(parscale)) trust_args$parscale <- parscale
   fit <- do.call(trust::trust, trust_args)
 
@@ -88,56 +91,40 @@ maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
        "iter" = fit$iterations)
 }
 
-#' Score test statistic
+#' Score statistic
 #'
-#' Computes the score test statistic for testing hypotheses about the
-#' covariance parameters of a linear mixed effects model, standardized by the
-#' efficient information, as the quadratic form (unsigned) or the signed root
-#' statistic.
+#' Computes the score statistic for the covariance parameters in
+#' \code{test_idx}, standardized by their efficient information, as a
+#' quadratic form or as a signed root.
 #'
 #' @param psi Numeric vector of covariance parameters, of length \eqn{r}, at
 #'   which to evaluate the statistic.
-#' @param test_idx Integer vector specifying which elements of \code{psi}
-#'   are being tested. These are the parameters constrained by the null hypothesis.
+#' @param test_idx Indices of the tested parameters.
 #' @param ll The log-likelihood as a function of \eqn{\psi}, from
 #'   \code{make_loglik}.
-#' @param expected Logical. If \code{TRUE}, use expected Fisher information
-#'   matrix; otherwise use observed information. Default is \code{TRUE}.
-#' @param signed Logical. If \code{TRUE}, return the signed root statistic
-#'   (vector). If \code{FALSE}, return the quadratic form statistic (scalar
-#'   for single parameter tests). Default is \code{FALSE}.
-#' @param known_idx Integer vector or \code{NULL} specifying which elements of
-#'   \code{psi} (other than those in \code{test_idx}) have known values and
-#'   should be held fixed (not treated as nuisance parameters to be profiled over).
-#'   If \code{NULL} (default), all parameters not in \code{test_idx} are treated
-#'   as nuisance parameters. Must not overlap with \code{test_idx}.
+#' @param expected Logical. If \code{TRUE}, the expected information;
+#'   otherwise the observed information.
+#' @param signed Logical. If \code{TRUE}, the signed root statistic, a vector
+#'   of length \code{length(test_idx)}; otherwise the quadratic form, a
+#'   scalar.
+#' @param known_idx Indices of parameters held fixed at their values in
+#'   \code{psi}, or \code{NULL}. The parameters in neither \code{test_idx}
+#'   nor \code{known_idx} are the nuisance parameters. Must not overlap with
+#'   \code{test_idx}.
 #' @param check If \code{TRUE} (default), validate arguments and warn when the
 #'   information matrix is poorly conditioned. Internal callers in loops set
 #'   \code{FALSE}.
 #'
-#' @return Numeric value or vector containing the score test statistic with
-#'   attributes \code{"score"} and \code{"info"}. If \code{signed = FALSE},
-#'   returns a scalar (the quadratic form). If \code{signed = TRUE}, returns a
-#'   vector (the signed root statistic). The \code{"score"} attribute contains
-#'   the score vector for the test parameter(s), and \code{"info"} contains
-#'   the used information for the test parameter(s). Under the
-#'   null hypothesis, the squared statistic asymptotically follows a chi-squared
-#'   distribution with degrees of freedom equal to \code{length(test_idx)}.
+#' @return The statistic, with attributes \code{"score"}, the score for the
+#'   tested parameters, and \code{"info"}, their efficient information.
 #'
 #' @details
-#' The score test statistic is computed as:
-#' \deqn{T = S_t^T I_{tt}^{-1} S_t}
-#' where \eqn{S_t} is the score vector for the test parameters and \eqn{I_{tt}}
-#' is the efficient information matrix. When there are nuisance parameters
-#' (parameters not in \code{test_idx} or \code{known_idx}), it is
-#' \deqn{I_{tt}^{eff} = I_{tt} - I_{tn} I_{nn}^{-1} I_{nt}}
-#' where subscripts \eqn{t} denote test parameters and \eqn{n} denote nuisance
-#' parameters. For a maximum likelihood fit the fixed effects are profiled out
-#' of \code{ll}, so they are nuisance parameters as well.
-#'
-#' When \code{known_idx} is specified, those parameters are treated as fixed and
-#' known (not as nuisance parameters). This is useful when some parameters have
-#' been estimated separately or are constrained to specific values.
+#' The quadratic form is \eqn{S_t' I_{tt}^{-1} S_t}, with \eqn{S_t} the score
+#' for the tested parameters and \eqn{I_{tt}} their efficient information
+#' \eqn{I_{tt} - I_{tn} I_{nn}^{-1} I_{nt}}, where \eqn{n} indexes the
+#' nuisance parameters. The signed root is \eqn{I_{tt}^{-1/2} S_t} with the
+#' symmetric square root. For a maximum likelihood fit the fixed effects are
+#' profiled out of \code{ll}.
 #'
 #' @noRd
 score_stat <- function(psi, test_idx, ll, expected = TRUE, signed = FALSE,

@@ -13,18 +13,15 @@
 #'   \eqn{\Psi} (see details).
 #' @param REML If \code{TRUE}, use the restricted likelihood; otherwise the
 #'   likelihood.
-#' @param method Which computational path to use: \code{"q_side"} works with
-#' sparse \eqn{q \times q} matrices via the Woodbury identity;
-#' \code{"n_side"} works with dense \eqn{n \times n} matrices and has cost
-#' independent of \eqn{q}; \code{"spectral"} applies only when \eqn{r = 2}
-#' and evaluates in \eqn{O(n)} time after a one-time eigendecomposition
-#' stored in the precomputations (see \code{?loglik_spectral}). The default
-#' \code{"auto"} picks a dense path iff \eqn{q \ge n} and \eqn{Z} is dense
-#' (more than 10 percent nonzeros), the regime where the sparse path
-#' degenerates: \code{"spectral"} if \eqn{r = 2}, otherwise \code{"n_side"}.
-#' For sparse \eqn{Z} the q-side is fast even when \eqn{q \gg n}.
-#' When \code{precomp} is supplied, its \code{method} tag takes precedence
-#' and this argument is ignored.
+#' @param method The computational path: \code{"q_side"} works with sparse
+#'   \eqn{q \times q} matrices via the Woodbury identity; \code{"n_side"}
+#'   works with dense \eqn{n \times n} matrices, at a cost independent of
+#'   \eqn{q}; \code{"spectral"} requires \eqn{r = 2} and evaluates in
+#'   \eqn{O(n)} time after a one-time eigendecomposition stored in the
+#'   precomputations (see \code{?loglik_spectral}). The default
+#'   \code{"auto"} is \code{"spectral"} or \code{"n_side"} if \eqn{q \ge n}
+#'   and more than 10 percent of the entries of \eqn{Z} are nonzero, and
+#'   \code{"q_side"} otherwise. A supplied \code{precomp} fixes the path.
 #' @param precomp Optional list of precomputed quantities from
 #'   \code{get_precomp}.
 #'
@@ -37,18 +34,19 @@
 #'  \item{score}{The score, or gradient of the log-likelihood, for \eqn{\psi}}
 #'  \item{inf_mat}{The information matrix for \eqn{\psi}}
 #'   The function has attribute \code{"r"}, the number of covariance
-#'   parameters, and does not validate \code{psi}.
+#'   parameters. The caller validates \code{psi}.
 #'
 #' @details
 #' The model is \deqn{Y = X\beta + Z U + E,} where \eqn{U \sim N_q(0, \Psi)}
-#' and \eqn{E \sim N_n(0, \psi_r I_n)}. The last element of \eqn{\psi} (or `psi[r]`)
-#' is the error variance. The first \eqn{r - 1} elements of \eqn{\psi}
-#' are variances and covariances of random effects.
+#' and \eqn{E \sim N_n(0, \psi_r I_n)}. The last element \code{psi[r]} of
+#' \eqn{\psi} is the error variance and the first \eqn{r - 1} elements are
+#' variances and covariances of random effects.
 #'
-#' \eqn{\Psi = \sum_{j = 1}^{r - 1}\psi_j H_j}, where each \eqn{H_j}
-#' is a \eqn{q\times q} matrix of zeros and ones. The argument \code{Hlist} is a list of length
-#' \eqn{r - 1} whose \eqn{j}th element is \eqn{H_j}. Each element of
-#' \eqn{\Psi} is then one of \eqn{\psi_1, \dots, \psi_{r - 1}}.
+#' The covariance matrix of the random effects is
+#' \eqn{\Psi = \sum_{j = 1}^{r - 1}\psi_j H_j}, where each \eqn{H_j} is a
+#' \eqn{q\times q} matrix of zeros and ones; \code{Hlist} is the list of
+#' \eqn{H_1, \dots, H_{r - 1}}. Each element of \eqn{\Psi} is then zero or
+#' one of \eqn{\psi_1, \dots, \psi_{r - 1}}.
 #'
 #' For \code{REML = FALSE}, the likelihood is evaluated at the generalized
 #' least squares estimate of \eqn{\beta} given \eqn{\psi}: this profile
@@ -169,7 +167,7 @@ make_loglik <- function(Y, X, Z, Hlist, REML = TRUE,
 #' evaluation: in the rotated coordinates \eqn{\Sigma} has eigenvalues
 #' \eqn{w = \psi_1 d + \psi_2} and all quantities are elementwise operations
 #' on \eqn{n}-vectors, costing \eqn{O(n)} up to factors in the fixed
-#' dimension \eqn{p}. The q-side and n-side paths pay a factorization on
+#' dimension \eqn{p}. The q-side and n-side paths factorize a matrix at
 #' every evaluation; see \code{?loglik} and \code{?loglik_n}.
 #'
 #' @param d Vector of length \eqn{n} of eigenvalues of \eqn{K = Z H_1 Z'}.
@@ -280,11 +278,10 @@ loglik_spectral <- function(d, Yt, Xt, psi, get_val = TRUE, get_score = TRUE,
 #' @return A list with components \code{value}, \code{score}, and
 #' \code{inf_mat} as in \code{?loglik_res}.
 #'
-#' @details The projection
+#' @details In the rotated coordinates the projection
 #' \eqn{P = \Sigma^{-1} - \Sigma^{-1}X(X'\Sigma^{-1}X)^{-1}X'\Sigma^{-1}}
-#' never materializes: in the rotated coordinates
-#' \eqn{P = diag(1/w) - B B'} with \eqn{B = diag(1/w) Xt R^{-1}} and
-#' \eqn{R'R = Xt' diag(1/w) Xt}, so every trace reduces to sums over the
+#' is \eqn{diag(1/w) - B B'} with \eqn{B = diag(1/w) Xt R^{-1}} and
+#' \eqn{R'R = Xt' diag(1/w) Xt}, so every trace is a sum over the
 #' \eqn{n}-vector \eqn{m = diag(B B')} and \eqn{p \times p} products.
 #'
 #' Feasibility is decided here as in \code{?loglik_spectral}: at infeasible

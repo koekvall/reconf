@@ -20,17 +20,18 @@ vc_ci(
 )
 }
 \arguments{
-\item{object}{a fitted linear mixed model, currently of class
-\code{lmerMod} from \code{lme4::lmer}, or a \code{\link{vc_model}}.}
+\item{object}{a fitted linear mixed model of class \code{lmerMod} from
+\code{lme4::lmer}, or a \code{\link{vc_model}}.}
 
 \item{parm}{parameters, as names (see Value) or as indices in the order
 of \code{\link{vc_model}}, which for an lme4 fit is that of
 \code{as.data.frame(VarCorr(fit), order = "lower.tri")}, with the error
-variance last. If \code{NULL}, all covariance parameters.}
+variance last. If \code{NULL}, all covariance parameters not in
+\code{known}.}
 
 \item{level}{confidence level.}
 
-\item{statistic}{\code{"score"} for the signed score statistic,
+\item{statistic}{\code{"score"} for the signed profile score statistic,
 standardized by the efficient information, or \code{"rlrt"} for the
 signed root of the profile likelihood ratio statistic, which for a
 restricted likelihood fit is the restricted likelihood ratio. See
@@ -40,17 +41,16 @@ Details.}
 observed information, both in the statistic and in the maximization over
 nuisance parameters.}
 
-\item{known}{parameters, as for \code{parm}, held fixed at their estimates
-instead of being treated as nuisance parameters.}
+\item{known}{parameters, as for \code{parm}, held fixed at their
+estimates.}
 
 \item{nonneg}{if \code{TRUE}, the interval for a variance, the error
 variance included, is intersected with \eqn{[0, \infty)}. An empty
 intersection gives \code{NA} bounds and a warning.}
 
 \item{onestep}{if \code{TRUE}, the nuisance parameters at each step are
-updated by one iteration of the optimizer, with unbounded trust region,
-from those at the previous step instead of maximized. Requires
-\code{statistic = "score"}.}
+one iteration of the optimizer, with unbounded trust region, from those
+at the previous step. Requires \code{statistic = "score"}.}
 
 \item{step_size}{initial step length of the search (see Details), on the
 scale of the parameter. If \code{NULL}, one fortieth of the standard
@@ -63,8 +63,11 @@ also stops at distance \code{num_points * step_size} from its origin.}
 \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}. See Details.
 A \code{vc_model} carries the method it was built with.}
 
-\item{...}{arguments passed to the optimizer \code{\link[trust]{trust}},
-such as \code{iterlim}.}
+\item{...}{arguments passed to the optimizer \code{\link[trust]{trust}}:
+\code{rinit}, \code{rmax}, \code{iterlim}, \code{fterm}, and
+\code{mterm}; and \code{warn_nonconv}, which if \code{FALSE} suppresses
+the warning when the optimizer does not converge. The default
+\code{iterlim} is 1000.}
 }
 \value{
 A matrix of class \code{vc_ci} with one row per parameter and
@@ -78,8 +81,8 @@ and correlations.
 }
 \description{
 Computes confidence intervals for covariance parameters of a linear mixed
-model by inverting a signed score or likelihood ratio statistic. See the
-references for the theory.
+model by inverting a signed profile score or likelihood ratio statistic.
+See the references for the theory.
 }
 \details{
 The interval at level \eqn{1 - \alpha} for a parameter \eqn{\psi_j} is
@@ -99,9 +102,13 @@ the step is halved, up to 20 times, after which a starting point is
 constructed as in \code{\link{vc_test}}. A bound is where the
 statistic crosses \eqn{\pm z_{1-\alpha/2}}, located to within
 \code{step_size}. If there is no crossing within the search distance, the
-bound is \code{-Inf} or \code{Inf} and a warning is issued. If the
-statistic at the estimate exceeds the critical value, the search starts
-instead from the maximizer over the parameter set, with a warning.
+bound is \code{-Inf} or \code{Inf} and a warning is issued, reporting
+the statistic at the end of the search. As a variance grows, the
+statistic tends to a finite limit, which for a grouping factor with few
+levels can be above \eqn{-z_{1-\alpha/2}}; the upper bound is then
+infinite for any search distance. If the statistic at the estimate
+exceeds the critical value, the search starts instead from the maximizer
+over the parameter set, with a warning.
 
 With \code{statistic = "rlrt"}, the search starts from the maximizer over
 the parameter set. A warning is issued if that maximizer has a negative

@@ -6,11 +6,9 @@
 #' @inheritParams vc_ci
 #' @param parm the tested parameters, as names or indices as in
 #'   \code{\link{vc_ci}}. If \code{NULL}, all random-effect covariance
-#'   parameters.
+#'   parameters not in \code{known}.
 #' @param null_value values of the tested parameters under the null
 #'   hypothesis, recycled to the length of \code{parm}.
-#' @param ... arguments passed to the optimizer \code{\link[trust]{trust}}.
-#'   The default \code{iterlim} is 1000.
 #'
 #' @return An object of class \code{"htest"} with components
 #'   \code{statistic}; \code{parameter}, the degrees of freedom, which is the
@@ -19,9 +17,10 @@
 #'   \code{\link{vc_ci}}; \code{alternative}; \code{method}; and
 #'   \code{data.name}.
 #'
-#' @details The statistic is evaluated at the maximizer of the likelihood
-#'   with the tested parameters at their null values and the parameters in
-#'   \code{known} at their estimates, and is standardized by the efficient
+#' @details The statistic is the profile score statistic: the score for the
+#'   tested parameters, evaluated at the maximizer of the likelihood with the
+#'   tested parameters at their null values and the parameters in
+#'   \code{known} at their estimates, and standardized by the efficient
 #'   information. The maximization is over the other covariance parameters
 #'   and, for a maximum likelihood fit, the fixed effects. It starts from the
 #'   estimates in the model, with the covariances of a random effect
@@ -52,12 +51,18 @@ vc_test <- function(object, parm = NULL, null_value = 0, expected = TRUE,
   setup <- .as_vc_model(object, match.arg(method), !missing(method))
   r     <- setup$r
   st    <- setup$structure
+  .check_flags(list(expected = expected))
+  .check_dots(list(...))
 
   # Indices into the covariance parameters, as in vc_ci
-  test_idx  <- .parm_index(parm, setup$names, "parm")
-  if (is.null(test_idx)) test_idx <- seq_len(r - 1)
   known_idx <- .parm_index(known, setup$names, "known")
-  if (length(intersect(test_idx, known_idx)) > 0) {
+  test_idx  <- .parm_index(parm, setup$names, "parm")
+  if (is.null(test_idx)) {
+    test_idx <- setdiff(seq_len(r - 1), known_idx)
+    if (length(test_idx) == 0) {
+      stop("no parameters to test: every random-effect parameter is in known")
+    }
+  } else if (length(intersect(test_idx, known_idx)) > 0) {
     stop("parm and known should not overlap")
   }
   k <- length(test_idx)
@@ -89,18 +94,12 @@ vc_test <- function(object, parm = NULL, null_value = 0, expected = TRUE,
          "of Psi")
   }
 
-  # Maximize over the nuisance parameters. Profiling at a null far from the
-  # estimates can require many cheap iterations along nearly flat
-  # directions (Fisher scoring converges linearly there), so the default
-  # iteration limit is generous.
+  # Maximize over the nuisance parameters; the default iteration limit is
+  # that of maximize_loglik
   opt_idx <- seq_len(r)[-fixed]
   if (length(opt_idx) > 0) {
-    dots <- list(...)
-    if (is.null(dots$iterlim)) dots$iterlim <- 1000L
-    psi <- do.call(maximize_loglik,
-                   c(list(start_val = psi, opt_idx = opt_idx, ll = setup$ll,
-                          expected = expected),
-                     dots))$arg
+    psi <- maximize_loglik(start_val = psi, opt_idx = opt_idx, ll = setup$ll,
+                           expected = expected, ...)$arg
   }
 
   test_stat <- as.numeric(score_stat(psi = psi, test_idx = test_idx,

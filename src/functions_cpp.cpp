@@ -4,7 +4,7 @@
 //'
 //' Constructs the covariance matrix of the random effects
 //'
-//' @param psi_mr A vector of covariance parameter (see ?make_loglik)
+//' @param psi_mr The first r - 1 covariance parameters (see ?make_loglik)
 //' @param H Sparse matrix of derivatives of Psi with respect to elements of psi,
 //'        \eqn{H = [H_1, \dots , H_{r - 1}]}, where \eqn{H_j = \partial \Psi / \partial \psi_j}.
 //' @return The covariance matrix \eqn{\Psi}
@@ -323,8 +323,8 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
   // X'Z A (p x q), shared by X'Sigma^{-1}X, the score, and the information
   Eigen::MatrixXd XtZA = XtZ * A;
 
-  //Create XtSiX
-  Eigen::MatrixXd U = (1.0 / psi_r) * (XtX - XtZA * XtZ.transpose());  //p*p
+  // U = X'Sigma^{-1}X (p x p)
+  Eigen::MatrixXd U = (1.0 / psi_r) * (XtX - XtZA * XtZ.transpose());
 
   // Force symmetric
   U = U.selfadjointView<Eigen::Upper>();
@@ -373,9 +373,7 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
   for (int ii = 0; ii < r - 1; ii++) {
     s_psi(ii) = 0.5 * v.dot(H.middleCols(ii * q, q) * v);
   }
-  /////////////////////////////////////////////////////////////////////////////
-  // NOTHING BELOW DEPENDS ON Y EXCEPT THE expected = false BLOCK AT THE END
-  /////////////////////////////////////////////////////////////////////////////
+  // Below, only the expected = false block at the end depends on Y
   // Matrices shared by the score and the information
   Eigen::SparseMatrix<double> C = Id_q - A * ZtZ;
   // G = X'Sigma^{-1}Z (p x q, dense)

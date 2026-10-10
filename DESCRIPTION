@@ -8,10 +8,12 @@ Authors@R: c(
     person("Matias", "Shedden", role = "ctb"))
 Description: Computes score-based confidence intervals and hypothesis tests
     for variance and covariance parameters of random effects in linear mixed
-    models fitted with 'lme4'. The intervals invert the efficient score test
-    on the natural variance-covariance scale and remain valid near the
-    boundary of the parameter space, where Wald and likelihood ratio
-    intervals can be unreliable. The methods are described in Shedden
+    models fitted with 'lme4'. The intervals invert a profile score
+    statistic on the variance-covariance scale, with nuisance parameters
+    estimated on an extended parameter set. The intervals have near-nominal
+    coverage uniformly in the parameter, including near the boundary of the
+    parameter space, where Wald and likelihood ratio intervals can be
+    unreliable. The methods are described in Shedden
     and Ekvall (2026) <doi:10.48550/arXiv.2610.04181>, building on Ekvall and
     Bottai (2026) <doi:10.1093/biomet/asaf079>, Zhang, Ekvall, and Molstad
     (2025) <doi:10.1093/biomet/asaf010>, and Ekvall and Bottai (2022)
@@ -25,7 +27,7 @@ Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 3.5.0)
 LazyData: true
-Imports: Matrix, lme4, Rcpp, trust, methods, generics
+Imports: Matrix (>= 1.5-0), lme4 (>= 1.1-8), Rcpp, trust, methods, generics
 LinkingTo: Rcpp, RcppEigen
 Suggests: testthat (>= 3.0.0), numDeriv, knitr, rmarkdown
 VignetteBuilder: knitr

@@ -13,13 +13,13 @@ vc_model(x, ...)
 \method{print}{vc_model}(x, digits = 4, ...)
 }
 \arguments{
-\item{x}{a fitted linear mixed model, currently of class \code{lmerMod}
-from \code{lme4::lmer}; for \code{print}, a \code{vc_model}.}
+\item{x}{a fitted linear mixed model of class \code{lmerMod} from
+\code{lme4::lmer}; for \code{print}, a \code{vc_model}.}
 
 \item{method}{computational method for the likelihood; see
 \code{\link{vc_ci}}.}
 
-\item{...}{further arguments, currently unused.}
+\item{...}{unused.}
 
 \item{digits}{number of significant digits printed.}
 }

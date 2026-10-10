@@ -39,4 +39,5 @@ test_that("vc_loglik returns named value, score, and information", {
   # Outside the parameter set
   expect_identical(ll(c(-1e6, 0, 35, 650))$value, -Inf)
   expect_error(ll(psi_hat[-1]), "length r = 4")
+  expect_error(ll(c(NA, 10, 35, 650)), "finite")
 })

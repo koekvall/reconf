@@ -26,8 +26,8 @@ print.vc_ci <- function(x, digits = 4, ...) {
 
 #' Tidy confidence intervals
 #'
-#' Returns the intervals as a data frame with the column names used
-#' throughout the broom ecosystem, for use in pipelines and plotting.
+#' Returns the intervals as a data frame with the column names of the
+#' broom package.
 #'
 #' @param x A \code{vc_ci} object from \code{\link{vc_ci}}.
 #' @param ... Unused.

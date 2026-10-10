@@ -7,7 +7,7 @@ This is a new submission.
 - Local: macOS 27 (Apple Silicon), R 4.6.1
 - win-builder: R-release and R-devel
 - R-hub: Linux, Windows and macOS (Apple Silicon) with R-devel; no long
-  doubles; ATLAS; clang ASAN
+  doubles; ATLAS; clang ASAN and UBSAN
 - GitHub Actions: macOS, Windows and Ubuntu with R-release; Ubuntu with
   R-devel and R-oldrel
 

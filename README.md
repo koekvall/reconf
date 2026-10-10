@@ -41,7 +41,9 @@ laptop.
 ## Installation
 
 ```r
-# Install from GitHub
+install.packages("reconf")
+
+# Development version
 remotes::install_github("koekvall/reconf")
 ```
 

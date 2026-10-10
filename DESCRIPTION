@@ -27,7 +27,7 @@ Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 3.5.0)
 LazyData: true
-Imports: Matrix, lme4, Rcpp, trust, methods, generics
+Imports: Matrix (>= 1.5-0), lme4 (>= 1.1-8), Rcpp, trust, methods, generics
 LinkingTo: Rcpp, RcppEigen
 Suggests: testthat (>= 3.0.0), numDeriv, knitr, rmarkdown
 VignetteBuilder: knitr

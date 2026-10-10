@@ -7,8 +7,8 @@
 vc_loglik(object, method = c("auto", "q_side", "n_side", "spectral"))
 }
 \arguments{
-\item{object}{a fitted linear mixed model, currently of class
-\code{lmerMod} from \code{lme4::lmer}, or a \code{\link{vc_model}}.}
+\item{object}{a fitted linear mixed model of class \code{lmerMod} from
+\code{lme4::lmer}, or a \code{\link{vc_model}}.}
 
 \item{method}{computational method for the likelihood: \code{"auto"},
 \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}. See Details.

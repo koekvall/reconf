@@ -4,12 +4,13 @@
 #' model by inverting a signed profile score or likelihood ratio statistic.
 #' See the references for the theory.
 #'
-#' @param object a fitted linear mixed model, currently of class
-#'   \code{lmerMod} from \code{lme4::lmer}, or a \code{\link{vc_model}}.
+#' @param object a fitted linear mixed model of class \code{lmerMod} from
+#'   \code{lme4::lmer}, or a \code{\link{vc_model}}.
 #' @param parm parameters, as names (see Value) or as indices in the order
 #'   of \code{\link{vc_model}}, which for an lme4 fit is that of
 #'   \code{as.data.frame(VarCorr(fit), order = "lower.tri")}, with the error
-#'   variance last. If \code{NULL}, all covariance parameters.
+#'   variance last. If \code{NULL}, all covariance parameters not in
+#'   \code{known}.
 #' @param level confidence level.
 #' @param statistic \code{"score"} for the signed profile score statistic,
 #'   standardized by the efficient information, or \code{"rlrt"} for the
@@ -19,15 +20,14 @@
 #' @param expected if \code{TRUE} use the expected information, otherwise the
 #'   observed information, both in the statistic and in the maximization over
 #'   nuisance parameters.
-#' @param known parameters, as for \code{parm}, held fixed at their estimates
-#'   instead of being treated as nuisance parameters.
+#' @param known parameters, as for \code{parm}, held fixed at their
+#'   estimates.
 #' @param nonneg if \code{TRUE}, the interval for a variance, the error
 #'   variance included, is intersected with \eqn{[0, \infty)}. An empty
 #'   intersection gives \code{NA} bounds and a warning.
 #' @param onestep if \code{TRUE}, the nuisance parameters at each step are
-#'   updated by one iteration of the optimizer, with unbounded trust region,
-#'   from those at the previous step instead of maximized. Requires
-#'   \code{statistic = "score"}.
+#'   one iteration of the optimizer, with unbounded trust region, from those
+#'   at the previous step. Requires \code{statistic = "score"}.
 #' @param step_size initial step length of the search (see Details), on the
 #'   scale of the parameter. If \code{NULL}, one fortieth of the standard
 #'   error from the expected information at the estimate.
@@ -36,8 +36,11 @@
 #' @param method computational method for the likelihood: \code{"auto"},
 #'   \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}. See Details.
 #'   A \code{vc_model} carries the method it was built with.
-#' @param ... arguments passed to the optimizer \code{\link[trust]{trust}},
-#'   such as \code{iterlim}.
+#' @param ... arguments passed to the optimizer \code{\link[trust]{trust}}:
+#'   \code{rinit}, \code{rmax}, \code{iterlim}, \code{fterm}, and
+#'   \code{mterm}; and \code{warn_nonconv}, which if \code{FALSE} suppresses
+#'   the warning when the optimizer does not converge. The default
+#'   \code{iterlim} is 1000.
 #'
 #' @return A matrix of class \code{vc_ci} with one row per parameter and
 #'   columns \code{estimate}, \code{lower}, and \code{upper}. For an lme4
@@ -66,9 +69,13 @@
 #' constructed as in \code{\link{vc_test}}. A bound is where the
 #' statistic crosses \eqn{\pm z_{1-\alpha/2}}, located to within
 #' \code{step_size}. If there is no crossing within the search distance, the
-#' bound is \code{-Inf} or \code{Inf} and a warning is issued. If the
-#' statistic at the estimate exceeds the critical value, the search starts
-#' instead from the maximizer over the parameter set, with a warning.
+#' bound is \code{-Inf} or \code{Inf} and a warning is issued, reporting
+#' the statistic at the end of the search. As a variance grows, the
+#' statistic tends to a finite limit, which for a grouping factor with few
+#' levels can be above \eqn{-z_{1-\alpha/2}}; the upper bound is then
+#' infinite for any search distance. If the statistic at the estimate
+#' exceeds the critical value, the search starts instead from the maximizer
+#' over the parameter set, with a warning.
 #'
 #' With \code{statistic = "rlrt"}, the search starts from the maximizer over
 #' the parameter set. A warning is issued if that maximizer has a negative
@@ -107,12 +114,26 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
                   method = c("auto", "q_side", "n_side", "spectral"), ...) {
   statistic <- match.arg(statistic)
   setup <- .as_vc_model(object, match.arg(method), !missing(method))
-  parm  <- .parm_index(parm, setup$names, "parm")
-  if (is.null(parm)) parm <- seq_len(setup$r)
   known <- .parm_index(known, setup$names, "known")
+  parm  <- .parm_index(parm, setup$names, "parm")
+  if (is.null(parm)) {
+    parm <- setdiff(seq_len(setup$r), known)
+    if (length(parm) == 0) {
+      stop("no parameters to compute intervals for: every parameter is in ",
+           "known")
+    }
+  } else if (length(intersect(parm, known)) > 0) {
+    stop("parm and known should not overlap")
+  }
 
+  .check_flags(list(expected = expected, nonneg = nonneg, onestep = onestep))
   if (!(is.numeric(level) && length(level) == 1L && level > 0 && level < 1)) {
     stop("level must be a single number in (0, 1)")
+  }
+  if (!(is.null(step_size) ||
+        (is.numeric(step_size) && length(step_size) == 1L &&
+         is.finite(step_size) && step_size > 0))) {
+    stop("step_size must be NULL or a single positive number")
   }
   if (!(is.numeric(num_points) && length(num_points) == 1L &&
         num_points >= 2)) {
@@ -122,14 +143,12 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
     stop("onestep = TRUE is not available with statistic = 'rlrt': ",
          "the likelihood ratio requires fully profiled nuisance parameters")
   }
-  # Arguments in ... go to the optimizer. An unknown name must be rejected
-  # here: inside the search it would error at every evaluation, and those
-  # errors are taken as infeasible points.
-  bad_dots <- setdiff(names(list(...)),
-                      c(names(formals(trust::trust)),
-                        names(formals(maximize_loglik))))
-  if (length(bad_dots) > 0) {
-    stop("unused argument(s): ", paste(bad_dots, collapse = ", "))
+  .check_dots(list(...))
+
+  # The information at the estimate sets the default step size for every
+  # parameter, so it is computed once here
+  inf_hat <- if (is.null(step_size)) {
+    setup$ll(setup$psi_hat, get_val = FALSE, get_score = FALSE)$inf_mat
   }
 
   # The rlrt reference maximum does not depend on the parameter, so compute
@@ -142,7 +161,8 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
     .ci_lmer_core(setup, test_idx = j, level = level, step_size = step_size,
                   num_points = num_points, expected = expected,
                   known_idx = known, onestep = onestep, nonneg = nonneg,
-                  statistic = statistic, rlrt_ref = rlrt_ref, ...)
+                  statistic = statistic, rlrt_ref = rlrt_ref,
+                  inf_hat = inf_hat, ...)
   }))
   .as_vc_ci(ci, level = level, REML = setup$REML, statistic = statistic)
 }
@@ -153,13 +173,15 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
 # Compute the CI for one parameter given a prebuilt setup; see vc_ci,
 # which validates the arguments. test_idx and known_idx index the covariance
 # parameters. accelerate = FALSE gives the fixed-step search, every step of
-# length step_size, which the tests compare against.
+# length step_size, which the tests compare against. inf_hat is the
+# information at the estimate, which vc_ci computes once for all
+# parameters; if NULL and step_size is NULL, it is computed here.
 .ci_lmer_core <- function(setup, test_idx, level = 0.95, step_size = NULL,
                           num_points = 500L, expected = TRUE,
                           known_idx = NULL,
                           onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
                           statistic = c("score", "rlrt"), rlrt_ref = NULL,
-                          ...) {
+                          inf_hat = NULL, ...) {
 
   statistic <- match.arg(statistic)
 
@@ -181,12 +203,19 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
   # Determine step size from expected information if not provided.
   # Use SE/40 so roughly 40 steps cover one Wald CI half-width on each side.
   if (is.null(step_size)) {
-    ll <- setup$ll(setup$psi_hat, get_val = FALSE, get_score = FALSE)
+    if (is.null(inf_hat)) {
+      inf_hat <- setup$ll(setup$psi_hat, get_val = FALSE,
+                          get_score = FALSE)$inf_mat
+    }
     se_approx <- tryCatch(
-      sqrt(solve(ll$inf_mat)[test_idx, test_idx]),
-      error = function(e) sqrt(1 / ll$inf_mat[test_idx, test_idx])
+      sqrt(solve(inf_hat)[test_idx, test_idx]),
+      error = function(e) sqrt(1 / inf_hat[test_idx, test_idx])
     )
     step_size <- se_approx / 40
+    if (!is.finite(step_size) || step_size <= 0) {
+      stop("step_size could not be set from the information at the ",
+           "estimate; supply step_size")
+    }
   }
 
   z_crit <- stats::qnorm((1 + level) / 2)
@@ -239,9 +268,8 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
     origin_eval <- .origin_eval()
   }
 
-  # Identify whether the test parameter is a variance (nonnegative) or a
-  # covariance (unconstrained). For variance rows VarCorr reports var2 as NA;
-  # this includes the residual variance row (where var1 is also NA).
+  # Whether the tested parameter is a variance, from the structure matrices
+  # (see .psi_structure); the nonneg clamp applies to variances only
   is_variance <- setup$structure$is_var[test_idx]
   clamp0 <- nonneg && is_variance
   origin_val <- theta_origin[test_idx]
@@ -293,10 +321,10 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
 }
 
 # Maximize the (restricted) log-likelihood over the extended parameter set,
-# free in every parameter except those in known_idx. Returns the maximize_loglik list; arg and value are the
-# reference maximizer and maximum for the rlrt statistic. Not wrapped in
-# tryCatch: without a reference no interval exists, so an optimizer error
-# propagates.
+# free in every parameter except those in known_idx. Returns the
+# maximize_loglik list; arg and value are the reference maximizer and
+# maximum for the rlrt statistic. An optimizer error propagates, because
+# without a reference no interval exists.
 .rlrt_reference <- function(setup, known_idx, expected = TRUE, ...) {
   free_idx <- seq_len(setup$r)
   if (length(known_idx) > 0L) free_idx <- setdiff(free_idx, known_idx)
@@ -403,7 +431,7 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
 }
 
 
-# Search outward from the MLE in one direction until the signed score profile
+# Search outward from the origin in one direction until the signed statistic
 # crosses the critical value, then interpolate to find the CI bound.
 #
 # direction: -1L to search left (lower bound), +1L to search right (upper bound)
@@ -523,7 +551,7 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
 
     # Crossing of the target: refine the bracket by regula falsi down to the
     # resolution of the fixed-step search, then interpolate.
-    if ((stat_cur - target) * (res$stat - target) < 0) {
+    if ((stat_cur - target) * (res$stat - target) <= 0) {
       lo_val <- val_cur;  lo_stat <- stat_cur;  lo_theta <- theta_cur
       hi_val <- prop_val; hi_stat <- res$stat;  hi_theta <- res$theta
       for (k in seq_len(8L)) {
@@ -543,7 +571,7 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
                           lo_val, lo_stat, hi_val, hi_stat))
         }
         if (is.null(res_mid)) break
-        if ((lo_stat - target) * (res_mid$stat - target) < 0) {
+        if ((lo_stat - target) * (res_mid$stat - target) <= 0) {
           hi_val <- mid_val; hi_stat <- res_mid$stat; hi_theta <- res_mid$theta
         } else {
           lo_val <- mid_val; lo_stat <- res_mid$stat; lo_theta <- res_mid$theta
@@ -590,6 +618,10 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
   side <- if (direction == -1L) "lower" else "upper"
   warning("CI ", side, " bound not found within the search radius (",
           format(max_radius, digits = 4), " = num_points * step_size from ",
-          "the estimate). Consider increasing num_points or step_size.")
+          "the search origin): the statistic is ",
+          format(stat_cur, digits = 3), " at ", format(val_cur, digits = 4),
+          ", critical value ", format(target, digits = 3), ". The bound is ",
+          "infinite if the statistic levels off short of the critical ",
+          "value; otherwise increase num_points or step_size.")
   if (direction == -1L) -Inf else Inf
 }

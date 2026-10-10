@@ -60,6 +60,15 @@ test_that("known and argument checks", {
                "null_value")
   expect_error(vc_test(fit_rs, parm = 4L),
                "error variance must be positive")
+  # The default parm excludes known parameters
+  res <- vc_test(fit_rs, known = 2L)
+  expect_identical(names(res$null.value),
+                   c("var_(Intercept)|Subject", "var_Days|Subject"))
+  expect_error(vc_test(fit_rs, known = 1:3),
+               "every random-effect parameter is in known")
+  # Misnamed or invalid arguments are rejected, not passed to the optimizer
+  expect_error(vc_test(fit_rs, foo = 1), "unused argument")
+  expect_error(vc_test(fit_rs, expected = "yes"), "single logical")
 })
 
 test_that("score test agrees across computational methods", {

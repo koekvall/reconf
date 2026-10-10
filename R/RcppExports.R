@@ -5,7 +5,7 @@
 #'
 #' Constructs the covariance matrix of the random effects
 #'
-#' @param psi_mr A vector of covariance parameter (see ?make_loglik)
+#' @param psi_mr The first r - 1 covariance parameters (see ?make_loglik)
 #' @param H Sparse matrix of derivatives of Psi with respect to elements of psi,
 #'        \eqn{H = [H_1, \dots , H_{r - 1}]}, where \eqn{H_j = \partial \Psi / \partial \psi_j}.
 #' @return The covariance matrix \eqn{\Psi}

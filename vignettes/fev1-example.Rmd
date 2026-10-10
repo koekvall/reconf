@@ -20,20 +20,18 @@ run_profile <- !identical(Sys.getenv("NOT_CRAN"), "")
 
 ## Overview
 
-This vignette illustrates the `reconf` package using a longitudinal lung function
-dataset.  We demonstrate score-based confidence intervals for all three covariance
-parameters of the random effects: two variances and one covariance.  Standard Wald
-intervals do not apply to covariance parameters in general, and profile
-likelihood intervals are reported by `lme4` on the Cholesky (SD/correlation)
-scale rather than the original variance/covariance scale.  The `reconf` package
-provides intervals directly on the natural scale.
+This vignette computes score-based confidence intervals for the three
+covariance parameters of the random effects in a model for longitudinal lung
+function data: two variances and one covariance. The profile likelihood
+intervals of `lme4` are on the standard deviation and correlation scale;
+`reconf` gives intervals on the variance and covariance scale.
 
 ## Data
 
 The `fev1` dataset contains 1994 repeated measurements of forced expiratory
-volume in one second (FEV1) for $n = 300$ girls and young women from Topeka,
-Kansas, originally described in Fitzmaurice, Laird, and Ware (2011).  Each row
-is one observation; the variables are:
+volume in one second (FEV1) for 300 girls from Topeka, Kansas, described in
+Fitzmaurice, Laird, and Ware (2011). Each row is one observation; the
+variables are:
 
 | Variable   | Description |
 |------------|-------------|
@@ -97,8 +95,7 @@ as.data.frame(VarCorr(fit), order = "lower.tri")[
   , c("grp", "var1", "var2", "vcov")]
 ```
 
-The random slope variance $\hat{\psi}_{3}$ is small, making its confidence
-interval of particular interest.
+The estimated random slope variance $\hat{\psi}_{3}$ is small.
 
 ## Score-based confidence intervals
 
@@ -122,10 +119,8 @@ vc_ci(fit, parm = "var_age|id")   # random slope variance psi_3
 
 ## Comparison with profile likelihood
 
-For reference, `lme4::confint()` with `method = "profile"` reports profile
-likelihood intervals.  Note that lme4 uses a Cholesky parameterization
-internally, so its output is on the SD/correlation scale rather than the
-variance/covariance scale used by `reconf`.
+For comparison, `lme4::confint()` with `method = "profile"` gives profile
+likelihood intervals on the standard deviation and correlation scale:
 
 ```{r lr-compare, eval = run_profile}
 confint(fit, method = "profile", parm = "theta_")

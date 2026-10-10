@@ -1,38 +1,26 @@
-#' Get structure matrices for covariance parameterization
+#' Structure matrices of an lme4 fit
 #'
-#' Extracts the list of structure matrices (H matrices) from an lme4 fit that
-#' determine how covariance parameters map to the covariance matrix structure.
-#' These matrices are used in likelihood computations where the covariance matrix
-#' is expressed as a linear combination: Psi = sum(psi\[i\] * H\[\[i\]\]).
+#' The matrices \eqn{H_j} with \eqn{\Psi = \sum_j \psi_j H_j} as in
+#' \code{make_loglik}: \eqn{H_j} has ones at the positions of \eqn{\psi_j}
+#' in \eqn{\Psi} and zeros elsewhere.
 #'
-#' @param lmerfit An `lmerMod` object from fitting a linear mixed model using
-#'   `lme4::lmer`.
+#' @param lmerfit An \code{lmerMod} object from \code{lme4::lmer}.
 #'
-#' @return A list of sparse symmetric matrices (dsCMatrix), one for each
-#'   covariance parameter (excluding error variance). The length of the list
-#'   equals `getME(lmerfit, "m")`, which is r - 1 where r is the total number
-#'   of covariance parameters including error variance.
-#'
-#' @details
-#' Each matrix in the returned list is an indicator matrix showing which elements
-#' of the random effects covariance matrix are associated with each parameter.
-#' The i-th matrix has 1s in positions determined by the i-th covariance parameter
-#' and 0s elsewhere.
+#' @return A list of \eqn{r - 1} sparse symmetric matrices, one per
+#'   random-effect covariance parameter, in the order of
+#'   \code{as.data.frame(VarCorr(lmerfit), order = "lower.tri")}.
 #'
 #' @noRd
 get_Hlist_lmer <- function(lmerfit)
 {
-  .check_lmerfit(lmerfit)
-
   # Psi, and hence H, has the same structure as Lambdat
   H <- lme4::getME(lmerfit, "Lambdat")
   param_idx <- lme4::getME(lmerfit, "Lind")
   q <- nrow(H)
   m <- lme4::getME(lmerfit, "m")
 
-  # Build each indicator matrix directly from matching nonzero positions,
-  # avoiding r-1 full copies of H followed by drop0
-  # Expand column-pointer format to per-element column indices
+  # Build each indicator matrix from the nonzero positions of Lambdat whose
+  # Lind entry is i. Expand the column pointers to a column index per entry
   col_idx <- rep(seq_len(q), diff(H@p))
   row_idx <- H@i + 1L  # 0-based to 1-based
 
@@ -97,23 +85,16 @@ vc_model.lmerMod <- function(x, method = c("auto", "q_side", "n_side",
   }, character(1))
 }
 
-#' Extract estimated covariance parameters from lme4 fit
+#' Estimated covariance parameters of an lme4 fit
 #'
-#' Extracts all estimated variance and covariance parameters from a fitted
-#' linear mixed model, including the error variance.
+#' @param lmerfit An \code{lmerMod} object from \code{lme4::lmer}.
 #'
-#' @param lmerfit An `lmerMod` object from fitting a linear mixed model using
-#'   `lme4::lmer`.
-#'
-#' @return A numeric vector containing all estimated covariance parameters,
-#'   ordered as in the `vcov` column of 
-#'   `as.data.frame(VarCorr(lmerfit), order = "lower.tri")`. The last element
-#'   is the error variance. The vector has length r, where r is the total
-#'   number of covariance parameters.
+#' @return The \code{vcov} column of
+#'   \code{as.data.frame(VarCorr(lmerfit), order = "lower.tri")}: the
+#'   \eqn{r} covariance parameters, the error variance last.
 #'
 #' @noRd
 get_psi_hat_lmer <- function(lmerfit)
 {
-  .check_lmerfit(lmerfit)
   as.data.frame(lme4::VarCorr(lmerfit), order = "lower.tri")$vcov
 }

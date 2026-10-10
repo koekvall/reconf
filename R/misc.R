@@ -28,10 +28,10 @@
 
 # Feasibility check: Sigma = psi_r (I_n + Z Psi_r Z') is positive definite
 # iff I + F Psi_r F' is positive definite for any F with F'F = Z'Z, because
-# the nonzero eigenvalues of F Psi_r F' and Psi_r Z'Z coincide. Uses the
-# precomputed q x q factor R = chol(ZtZ) when available and falls back to
-# F = Z (an n x n check) when ZtZ is singular. Decided by attempting a sparse
-# Cholesky factorization, which fails iff the matrix is not positive definite.
+# the nonzero eigenvalues of F Psi_r F' and Psi_r Z'Z coincide. F is the
+# precomputed q x q factor R with R'R = Z'Z when available and Z otherwise.
+# Decided by attempting a sparse Cholesky factorization, which fails iff the
+# matrix is not positive definite.
 #
 # When a gate cache is supplied (see get_precomp), the symbolic analysis of
 # the factor is reused across evaluations and only the numeric factorization
@@ -57,8 +57,9 @@
 }
 
 # Quantities reusable across likelihood evaluations. H concatenates the
-# structure matrices; R is the Cholesky factor of ZtZ used by the feasibility
-# check (NULL when ZtZ is singular, e.g., crossed random intercepts).
+# structure matrices; R is a q x q factor with R'R = ZtZ used by the
+# feasibility check, from .ztz_factor (NULL when no factor is available, in
+# which case the check uses Z itself).
 #
 # With method = "n_side", instead precompute for the dense n-by-n likelihood
 # path (loglik_n, loglik_res_n): the concatenated K = [K_1 ... K_{r - 1}] with
@@ -72,15 +73,14 @@
 # shares the eigenvectors of K for every psi, the one-time O(n^3)
 # decomposition replaces the per-evaluation factorization entirely.
 #
-# method = "auto" picks a dense path iff q >= n and Z is dense-ish, and among
-# the dense paths the spectral one when it applies (r = 2). Dimensions alone
-# are not the right criterion: with sparse Z (e.g., crossed intercepts), Z'Z
-# has O(n) off-diagonals however large q is, and the sparse q-side stays as
-# fast or faster than the dense n-side even for q >> n (benchmarked
-# 2026-07-12: at n = 1000, q = 6000 crossed, q-side ~4 ms vs n-side ~150 ms).
-# The dense paths win when Z is dense: the q-side then degenerates to dense
-# q x q algebra (same benchmark: 50-140x in favor of n-side). The density
-# threshold is a heuristic; callers can always force a path via method.
+# method = "auto" picks a dense path iff q >= n and Z is dense, and among
+# the dense paths the spectral one when r = 2. The density condition matters:
+# with sparse Z (e.g., crossed intercepts), Z'Z has O(n) off-diagonals
+# however large q is, and the sparse q-side is as fast as or faster than the
+# dense n-side even for q >> n (benchmarked 2026-07-12: at n = 1000,
+# q = 6000 crossed, q-side ~4 ms vs n-side ~150 ms). With dense Z the q-side
+# degenerates to dense q x q algebra and the n-side is 50-140x faster (same
+# benchmark). The density threshold is a heuristic; method forces a path.
 get_precomp <- function(Y, X, Z, Hlist = NULL,
                         method = c("auto", "q_side", "n_side", "spectral")) {
   method <- match.arg(method)
@@ -116,18 +116,7 @@ get_precomp <- function(Y, X, Z, Hlist = NULL,
     return(list("K" = K, "method" = "n_side"))
   }
   ZtZ <- methods::as(crossprod(Z), "generalMatrix")
-  R <- tryCatch(suppressWarnings(Matrix::chol(Matrix::forceSymmetric(ZtZ))),
-                error = function(e) NULL)
-  if (is.null(R)) {
-    # ZtZ singular (e.g., a group with a single observation, or crossed
-    # random intercepts). Use the R factor of a sparse QR of Z instead:
-    # after undoing the column permutation, crossprod(R) equals ZtZ, which
-    # is all the feasibility check needs.
-    R <- tryCatch(suppressWarnings({
-      qrZ <- Matrix::qr(Z)
-      Matrix::qr.R(qrZ)[, order(qrZ@q + 1L), drop = FALSE]
-    }), error = function(e) NULL)
-  }
+  R <- .ztz_factor(Z, ZtZ)
   precomp <- list("XtX" = as.matrix(crossprod(X)),
                   "XtZ" = as.matrix(crossprod(X, Z)),
                   "ZtZ" = ZtZ,
@@ -156,6 +145,29 @@ get_precomp <- function(Y, X, Z, Hlist = NULL,
   precomp
 }
 
+# A q x q factor R with R'R = ZtZ for the feasibility check, or NULL if none
+# is available: the sparse Cholesky of ZtZ or, if that fails because ZtZ is
+# not positive definite to working precision, the R factor of a sparse QR of
+# Z from .qr_factor. On a rank-deficient ZtZ, such as crossed random
+# intercepts, the Cholesky usually completes with a pivot near zero; R'R =
+# ZtZ then still holds to rounding, which is all the check needs.
+.ztz_factor <- function(Z, ZtZ) {
+  R <- tryCatch(suppressWarnings(Matrix::chol(Matrix::forceSymmetric(ZtZ))),
+                error = function(e) NULL)
+  if (is.null(R)) R <- .qr_factor(Z)
+  R
+}
+
+# The R factor of a sparse QR of Z with the column permutation undone, so
+# that crossprod(R) equals Z'Z; NULL if the factorization fails. Matrix's
+# sparse QR requires nrow(Z) >= ncol(Z), so for a wider Z this is NULL.
+.qr_factor <- function(Z) {
+  tryCatch(suppressWarnings({
+    qrZ <- Matrix::qr(Z)
+    Matrix::qr.R(qrZ)[, order(qrZ@q + 1L), drop = FALSE]
+  }), error = function(e) NULL)
+}
+
 # Where each covariance parameter appears in Psi = sum_j psi_j H_j, from the
 # structure matrices alone: on_diag[i, j] is TRUE if psi_j is the i-th
 # diagonal entry of Psi, and n_off[i, j] counts the off-diagonal entries of
@@ -176,10 +188,23 @@ get_precomp <- function(Y, X, Z, Hlist = NULL,
   list(on_diag = on_diag, n_off = n_off, is_var = c(colSums(on_diag) > 0, TRUE))
 }
 
-# Stop unless the argument is a fitted lmer model
-.check_lmerfit <- function(lmerfit) {
-  if (!inherits(lmerfit, "lmerMod")) {
-    stop("lmerfit must be an lmerMod object from lme4::lmer")
+# The arguments vc_ci and vc_test accept in ... and pass to the optimizer:
+# the trust::trust settings a caller can change, and the maximize_loglik
+# flag warn_nonconv. The other formals of trust and maximize_loglik are set
+# by the functions themselves. Any other name is rejected by .check_dots,
+# because the CI search takes an error inside a profile evaluation as an
+# infeasible point.
+.optimizer_args <- c("rinit", "rmax", "iterlim", "fterm", "mterm",
+                     "warn_nonconv")
+
+# Validate the list of arguments in ... against .optimizer_args
+.check_dots <- function(dots) {
+  if (length(dots) > 0 && (is.null(names(dots)) || any(names(dots) == ""))) {
+    stop("arguments in ... must be named", call. = FALSE)
+  }
+  bad <- setdiff(names(dots), .optimizer_args)
+  if (length(bad) > 0) {
+    stop("unused argument(s): ", paste(bad, collapse = ", "), call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -209,11 +234,12 @@ get_precomp <- function(Y, X, Z, Hlist = NULL,
   invisible(TRUE)
 }
 
-# Validate a vector of covariance parameters for a model with structure
-# matrices Hlist, or with r parameters if Hlist is NULL
-.check_psi <- function(psi, Hlist = NULL, r = length(Hlist) + 1) {
-  if (!(is.vector(psi, mode = "numeric") && (is.null(r) || length(psi) == r))) {
-    stop("psi should be a numeric vector of length r = ", r, call. = FALSE)
+# Validate a vector of r covariance parameters
+.check_psi <- function(psi, r) {
+  if (!(is.vector(psi, mode = "numeric") && length(psi) == r &&
+        all(is.finite(psi)))) {
+    stop("psi should be a numeric vector of finite values with length r = ",
+         r, call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -221,7 +247,8 @@ get_precomp <- function(Y, X, Z, Hlist = NULL,
 # Validate a named list of single logical arguments
 .check_flags <- function(flags) {
   for (nm in names(flags)) {
-    if (!(is.logical(flags[[nm]]) && length(flags[[nm]]) == 1)) {
+    if (!(is.logical(flags[[nm]]) && length(flags[[nm]]) == 1 &&
+          !is.na(flags[[nm]]))) {
       stop(nm, " should be a single logical value", call. = FALSE)
     }
   }

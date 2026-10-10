@@ -7,12 +7,12 @@
 #' a fitted model and build this object themselves; building it once avoids
 #' repeating the precomputation across calls.
 #'
-#' @param x a fitted linear mixed model, currently of class \code{lmerMod}
-#'   from \code{lme4::lmer}; for \code{print}, a \code{vc_model}.
+#' @param x a fitted linear mixed model of class \code{lmerMod} from
+#'   \code{lme4::lmer}; for \code{print}, a \code{vc_model}.
 #' @param method computational method for the likelihood; see
 #'   \code{\link{vc_ci}}.
 #' @param digits number of significant digits printed.
-#' @param ... further arguments, currently unused.
+#' @param ... unused.
 #'
 #' @return An object of class \code{"vc_model"}. Printing it shows the
 #'   covariance parameters, in the order that indices in \code{vc_ci} and

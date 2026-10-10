@@ -361,6 +361,49 @@ test_that("prior weights are handled exactly via the W^(1/2) transformation", {
   expect_gt(ci[1, "upper"], mle)
 })
 
+# ── argument checks ──────────────────────────────────────────────────────────
+
+test_that("vc_ci rejects arguments the search would otherwise swallow", {
+  skip_on_cran()
+  # Inside the search an error in a profile evaluation counts as an
+  # infeasible point, so a misnamed or invalid argument must be rejected
+  # up front rather than turn into an infinite interval
+  expect_error(vc_ci(fit_ri, parm = 1L, check = FALSE), "unused argument")
+  expect_error(vc_ci(fit_ri, parm = 1L, minimize = FALSE), "unused argument")
+  expect_error(vc_ci(fit_ri, parm = 1L, expected = "yes"), "single logical")
+  expect_error(vc_ci(fit_ri, parm = 1L, nonneg = NA), "single logical")
+  expect_error(vc_ci(fit_ri, parm = 1L, step_size = 0), "step_size")
+  expect_error(vc_ci(fit_ri, parm = 1L, step_size = c(1, 2)), "step_size")
+  expect_error(vc_ci(fit_ri, parm = 1L, known = 1L), "should not overlap")
+  expect_error(vc_ci(fit_ri, known = 1:2), "every parameter is in known")
+  # Allowed optimizer settings pass through
+  ci <- vc_ci(fit_ri, parm = 1L, iterlim = 50L, warn_nonconv = FALSE)
+  expect_true(all(is.finite(ci)))
+})
+
+test_that("the default parm excludes known parameters", {
+  skip_on_cran()
+  ci <- vc_ci(fit_rs, known = "cov_Days.(Intercept)|Subject")
+  expect_identical(rownames(ci), c("var_(Intercept)|Subject",
+                                   "var_Days|Subject", "var_Residual"))
+  expect_equal(unclass(ci)[1, ],
+               unclass(vc_ci(fit_rs, parm = 1L, known = 2L))[1, ])
+})
+
+test_that("a statistic that levels off gives an infinite bound and a warning", {
+  skip_on_cran()
+  # The sample factor has 6 levels: as its variance grows, the signed score
+  # statistic tends to -sqrt((6 - 1) / 2) = -1.58, short of -1.96, so the
+  # 95% upper bound is infinite whatever the search distance
+  fit <- lmer(diameter ~ (1 | plate) + (1 | sample), Penicillin)
+  expect_warning(ci <- vc_ci(fit, parm = "var_(Intercept)|sample"),
+                 "levels off")
+  expect_identical(ci[1, "upper"], Inf)
+  expect_true(is.finite(ci[1, "lower"]))
+})
+
+# ── offsets ──────────────────────────────────────────────────────────────────
+
 test_that("offsets are subtracted before the analysis", {
   skip_on_cran()
   set.seed(8)

@@ -6,7 +6,7 @@
 \alias{reconf-package}
 \title{reconf: Confidence Intervals for Random Effect Parameters in Linear Mixed Models}
 \description{
-Computes score-based confidence intervals and hypothesis tests for variance and covariance parameters of random effects in linear mixed models fitted with 'lme4'. The intervals invert the efficient score test on the natural variance-covariance scale and are designed to remain valid near the boundary of the parameter space, where Wald and likelihood ratio intervals can be unreliable. The methods are described in Shedden and Ekvall (2026, in preparation), building on Ekvall and Bottai (2026) \doi{10.1093/biomet/asaf079}, Zhang, Ekvall, and Molstad (2025) \doi{10.1093/biomet/asaf010}, and Ekvall and Bottai (2022) \doi{10.1214/22-AOS2177}.
+Computes score-based confidence intervals and hypothesis tests for variance and covariance parameters of random effects in linear mixed models fitted with 'lme4'. The intervals invert the efficient score test on the natural variance-covariance scale and remain valid near the boundary of the parameter space, where Wald and likelihood ratio intervals can be unreliable. The methods are described in Shedden and Ekvall (2026) \doi{10.48550/arXiv.2610.04181}, building on Ekvall and Bottai (2026) \doi{10.1093/biomet/asaf079}, Zhang, Ekvall, and Molstad (2025) \doi{10.1093/biomet/asaf010}, and Ekvall and Bottai (2022) \doi{10.1214/22-AOS2177}.
 }
 \seealso{
 Useful links:

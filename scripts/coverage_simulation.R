@@ -13,7 +13,7 @@
 #   - profile: 2 * (l_max - l_profile(psi1)) <= qchisq(0.95, 1), the
 #              likelihood-ratio inversion underlying profile intervals;
 #   - score:   the efficient score statistic at psi1 <= qchisq(0.95, 1),
-#              the test inverted by reconf::ci_lmer.
+#              the test inverted by reconf::vc_ci.
 #
 # Run from the package root:
 #   PILOT=1 Rscript scripts/coverage_simulation.R   # small run, sanity check
@@ -51,16 +51,13 @@ one_rep <- function(psi1, rep_id) {
     ))
     Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
     Hlist <- reconf:::get_Hlist_lmer(fit)
-    pc <- reconf:::get_precomp(Y, X, Z, REML = TRUE, Hlist = Hlist)
+    llf <- reconf:::make_loglik(Y, X, Z, Hlist, REML = TRUE)
 
     # lme4's constrained REML estimates: the quantities practitioners use
     psi_hat <- reconf:::get_psi_hat_lmer(fit)
 
     # Value and expected information at the estimates
-    ll_hat <- reconf:::loglikelihood(
-      psi = psi_hat, Y = Y, X = X, Z = Z, Hlist = Hlist, REML = TRUE,
-      get_val = TRUE, get_score = FALSE, get_inf = TRUE,
-      precomp = pc, check = FALSE)
+    ll_hat <- llf(psi_hat, get_score = FALSE)
 
     # Wald on the variance scale
     wald_cover <- abs(psi_hat[1] - psi1) <=
@@ -68,8 +65,7 @@ one_rep <- function(psi1, rep_id) {
 
     # Nuisance error variance profiled at psi1 fixed to the truth
     prof <- reconf:::maximize_loglik(
-      start_val = c(psi1, psi_hat[2]), opt_idx = 2L,
-      Y = Y, X = X, Z = Z, Hlist = Hlist, REML = TRUE, precomp = pc,
+      start_val = c(psi1, psi_hat[2]), opt_idx = 2L, ll = llf,
       check = FALSE, warn_nonconv = FALSE, iterlim = 1000L)
 
     # Profile-likelihood interval coverage via the LRT at the truth
@@ -78,10 +74,8 @@ one_rep <- function(psi1, rep_id) {
     prof_cover <- max(0, 2 * (ll_hat$value - prof$value)) <= crit
 
     # Score interval coverage via the efficient score test at the truth
-    st <- reconf:::score_stat(
-      theta = prof$arg, test_idx = 1L,
-      Y = Y, X = X, Z = Z, Hlist = Hlist, REML = TRUE,
-      precomp = pc, check = FALSE)
+    st <- reconf:::score_stat(psi = prof$arg, test_idx = 1L, ll = llf,
+                              check = FALSE)
     score_cover <- as.numeric(st) <= crit
 
     c(wald_cover, prof_cover, score_cover)

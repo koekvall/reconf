@@ -20,11 +20,12 @@ URL: https://github.com/koekvall/reconf
 BugReports: https://github.com/koekvall/reconf/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
+Language: en-US
 Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 3.5.0)
 LazyData: true
-Imports: Matrix, lme4, trust, methods, generics
+Imports: Matrix, lme4, Rcpp, trust, methods, generics
 LinkingTo: Rcpp, RcppEigen
 Suggests: testthat (>= 3.0.0), numDeriv, knitr, rmarkdown
 VignetteBuilder: knitr

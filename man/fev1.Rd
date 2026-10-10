@@ -8,11 +8,11 @@
 A data frame with 1994 rows and 6 variables:
 \describe{
 \item{id}{subject identifier.}
-\item{ht}{height (metres).}
+\item{ht}{height (meters).}
 \item{age}{age (years).}
-\item{baseht}{height at the first measurement (metres).}
+\item{baseht}{height at the first measurement (meters).}
 \item{baseage}{age at the first measurement (years).}
-\item{logfev1}{natural logarithm of FEV1 (litres).}
+\item{logfev1}{natural logarithm of FEV1 (liters).}
 }
 }
 \source{

@@ -39,10 +39,10 @@ is one observation; the variables are:
 |------------|-------------|
 | `id`       | Subject identifier |
 | `age`      | Age at measurement (years) |
-| `ht`       | Height at measurement (metres) |
+| `ht`       | Height at measurement (meters) |
 | `baseage`  | Baseline age (first visit) |
 | `baseht`   | Baseline height (first visit) |
-| `logfev1`  | Log FEV1 (natural log, litres) |
+| `logfev1`  | Log FEV1 (natural log, liters) |
 
 ```{r load-data}
 library(reconf)

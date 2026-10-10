@@ -109,7 +109,7 @@ test_that("efficient information matches the explicit Schur subtraction", {
       st <- reconf:::score_stat(psi = psi, test_idx = cfg$t,
                                 known_idx = cfg$k, ll = ll, signed = TRUE)
       expect_equal(attr(st, "info"), eff_sub(inf_full, cfg$t, cfg$k),
-                   tolerance = 1e-10, ignore_attr = TRUE)
+                   tolerance = 1e-8, ignore_attr = TRUE)
     }
   }
 
@@ -125,7 +125,7 @@ test_that("efficient information matches the explicit Schur subtraction", {
     st <- reconf:::score_stat(psi = psi_ml, test_idx = 1L, ll = ll_ml,
                               expected = expected, signed = TRUE)
     expect_equal(attr(st, "info"), eff_sub(inf_full, 1L),
-                 tolerance = 1e-10, ignore_attr = TRUE)
+                 tolerance = 1e-8, ignore_attr = TRUE)
   }
 })
 

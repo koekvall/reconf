@@ -52,9 +52,10 @@ Computes the score test statistic for a hypothesis about the covariance
 parameters of a linear mixed model.
 }
 \details{
-The statistic is evaluated at the maximizer of the likelihood
-with the tested parameters at their null values and the parameters in
-\code{known} at their estimates, and is standardized by the efficient
+The statistic is the profile score statistic: the score for the
+tested parameters, evaluated at the maximizer of the likelihood with the
+tested parameters at their null values and the parameters in
+\code{known} at their estimates, and standardized by the efficient
 information. The maximization is over the other covariance parameters
 and, for a maximum likelihood fit, the fixed effects. It starts from the
 estimates in the model, with the covariances of a random effect

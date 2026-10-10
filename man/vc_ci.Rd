@@ -30,7 +30,7 @@ variance last. If \code{NULL}, all covariance parameters.}
 
 \item{level}{confidence level.}
 
-\item{statistic}{\code{"score"} for the signed score statistic,
+\item{statistic}{\code{"score"} for the signed profile score statistic,
 standardized by the efficient information, or \code{"rlrt"} for the
 signed root of the profile likelihood ratio statistic, which for a
 restricted likelihood fit is the restricted likelihood ratio. See
@@ -78,8 +78,8 @@ and correlations.
 }
 \description{
 Computes confidence intervals for covariance parameters of a linear mixed
-model by inverting a signed score or likelihood ratio statistic. See the
-references for the theory.
+model by inverting a signed profile score or likelihood ratio statistic.
+See the references for the theory.
 }
 \details{
 The interval at level \eqn{1 - \alpha} for a parameter \eqn{\psi_j} is

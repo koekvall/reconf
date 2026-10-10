@@ -1,8 +1,8 @@
 #' Confidence intervals for covariance parameters
 #'
 #' Computes confidence intervals for covariance parameters of a linear mixed
-#' model by inverting a signed score or likelihood ratio statistic. See the
-#' references for the theory.
+#' model by inverting a signed profile score or likelihood ratio statistic.
+#' See the references for the theory.
 #'
 #' @param object a fitted linear mixed model, currently of class
 #'   \code{lmerMod} from \code{lme4::lmer}, or a \code{\link{vc_model}}.
@@ -11,7 +11,7 @@
 #'   \code{as.data.frame(VarCorr(fit), order = "lower.tri")}, with the error
 #'   variance last. If \code{NULL}, all covariance parameters.
 #' @param level confidence level.
-#' @param statistic \code{"score"} for the signed score statistic,
+#' @param statistic \code{"score"} for the signed profile score statistic,
 #'   standardized by the efficient information, or \code{"rlrt"} for the
 #'   signed root of the profile likelihood ratio statistic, which for a
 #'   restricted likelihood fit is the restricted likelihood ratio. See

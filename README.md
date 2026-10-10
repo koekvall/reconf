@@ -1,14 +1,17 @@
 # reconf
 
-Score-based confidence intervals and hypothesis tests for variance components in linear mixed models fitted with [lme4](https://github.com/lme4/lme4).
+Score-based confidence intervals and hypothesis tests for variances and
+covariances of random effects in linear mixed models fitted with
+[lme4](https://github.com/lme4/lme4).
 
 ## Overview
 
 `reconf` computes confidence intervals and score tests for the variances
 and covariances of random effects in linear mixed models. The intervals
-invert the efficient score test on the variance-covariance scale and remain
-valid near the boundary of the parameter space, where Wald and likelihood
-ratio intervals can be unreliable; see the references.
+invert a profile score statistic on the variance-covariance scale, with
+nuisance parameters estimated on an extended parameter set. The intervals have
+near-nominal coverage, even near the boundary of the parameter space where
+Wald and likelihood ratio intervals can be unreliable; see the references.
 
 - Restricted (REML) and maximum likelihood fits, with prior weights and
   offsets.
@@ -27,8 +30,9 @@ replicates at each of eleven values of the variance. Across those values,
 the coverage was between 0.941 and 0.960 for the score intervals, between
 0.914 and 0.998 for Wald intervals, and between 0.937 and 0.978 for profile
 likelihood intervals; the Monte Carlo standard errors are at most 0.0063.
-The simulation is in
-[scripts/coverage_simulation.R](https://github.com/koekvall/reconf/blob/main/scripts/coverage_simulation.R).
+The simulation is `coverage_simulation.R` in the
+[scripts folder](https://github.com/koekvall/reconf/tree/main/scripts) of the
+repository.
 
 On the FEV1 model of the vignette, `vc_ci()` computed the four intervals in
 0.7 s and `confint(fit, method = "profile")` in 28 s, in one run on a
@@ -78,8 +82,7 @@ The parameter ordering follows `as.data.frame(VarCorr(fit), order = "lower.tri")
 - **[Main reference]** Shedden, M. and Ekvall, K. O. (2026). Score-based
   confidence intervals for variance-covariance parameters in linear mixed
   models. *arXiv preprint.*
-  [arXiv:2610.04181](https://arxiv.org/abs/2610.04181). Describes the
-  methods implemented in this package.
+  [arXiv:2610.04181](https://arxiv.org/abs/2610.04181).
 - **[Background / supporting theory]** Ekvall, K. O. and Bottai, M. (2026).
   Uniform inference in linear mixed models. *Biometrika* 113(1), asaf079.
   [doi:10.1093/biomet/asaf079](https://doi.org/10.1093/biomet/asaf079)

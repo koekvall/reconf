@@ -64,8 +64,8 @@
   vector with elements `stat`, `p_val`, and `df`. It takes `null_value`,
   the values of the tested parameters (default 0), in place of the full
   parameter vector `theta_null`. The arguments `efficient` and `profile` are
-  removed; the statistic is the efficient score statistic at the maximizer
-  over the nuisance parameters.
+  removed; the statistic is the profile score statistic, standardized by the
+  efficient information.
 * For maximum likelihood fits the fixed effects are profiled out of the
   likelihood by generalized least squares, which leaves the statistics
   unchanged.

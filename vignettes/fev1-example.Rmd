@@ -108,7 +108,7 @@ the corresponding variance or covariance and shows the estimate alongside
 the bounds; the random-effect parameters appear in lower-triangular order,
 so indices 1, 2, 3 refer to $\psi_{1}$, $\psi_{2}$, $\psi_{3}$.
 
-```{r ci-all, cache = TRUE}
+```{r ci-all}
 ci <- vc_ci(fit)
 ci
 ```
@@ -116,7 +116,7 @@ ci
 The argument `parm` selects parameters by name or index, and only those
 intervals are computed.
 
-```{r ci-single, cache = TRUE}
+```{r ci-single}
 vc_ci(fit, parm = "var_age|id")   # random slope variance psi_3
 ```
 
@@ -151,7 +151,7 @@ $\psi_{2}/\sqrt{\psi_{1}\psi_{3}}$.
 with the other parameters as nuisance parameters.  For the random slope
 variance $\psi_{3}$:
 
-```{r score-test-one, cache = TRUE}
+```{r score-test-one}
 fit_reml <- lmer(
   logfev1 ~ age + ht + baseage + baseht + (age | id),
   data = fev1, REML = TRUE,
@@ -165,7 +165,7 @@ contribute nothing is $H_0: \psi_{2} = \psi_{3} = 0$.  When
 $\psi_{3} = 0$, the slope $U_{i2}$ is identically zero, which forces
 $\psi_{2} = 0$ as well, so both are in the null.
 
-```{r score-test, cache = TRUE}
+```{r score-test}
 vc_test(fit_reml, parm = c(2L, 3L))
 ```
 

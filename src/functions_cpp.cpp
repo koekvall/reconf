@@ -320,8 +320,11 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
   Eigen::SparseMatrix<double> Id_q(q, q);
   Id_q.setIdentity();
 
+  // X'Z A (p x q), shared by X'Sigma^{-1}X, the score, and the information
+  Eigen::MatrixXd XtZA = XtZ * A;
+
   //Create XtSiX
-  Eigen::MatrixXd U = (1.0 / psi_r) * (XtX - XtZ * A * XtZ.transpose());  //p*p
+  Eigen::MatrixXd U = (1.0 / psi_r) * (XtX - XtZA * XtZ.transpose());  //p*p
 
   // Force symmetric
   U = U.selfadjointView<Eigen::Upper>();
@@ -389,7 +392,7 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
   // decomposition Z'P Z = S - G'E1 described below; the psi_r term is
   // -0.5 tr(P) = -0.5 [tr(Sigma^{-1}) - tr(D_{(2)})]
   s_psi(r - 1) -= (0.5 / psi_r) * (n - q + C.diagonal().sum());
-  s_psi(r - 1) += (0.5 / psi_r) * (p - E1.cwiseProduct(XtZ * A).sum());
+  s_psi(r - 1) += (0.5 / psi_r) * (p - E1.cwiseProduct(XtZA).sum());
   for (int jj = 0; jj < r - 1; jj++) {
     // Score for psi_j: tr(S H_j) - tr(G'E1 H_j)
     s_psi(jj) -= 0.5 * S.cwiseProduct(H.middleCols(jj * q, q)).sum() -
@@ -407,7 +410,7 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     ////////////////////////////////////////////////////////////////////////////
     // The term -tr(D_{(3)})
     I_psi(r - 1, r - 1) = (-1.0 / psi_r) * (D2.diagonal().sum() -
-      E2.cwiseProduct(XtZ * A).sum());
+      E2.cwiseProduct(XtZA).sum());
 
     Eigen::SparseMatrix<double> Ct = C.transpose();
 

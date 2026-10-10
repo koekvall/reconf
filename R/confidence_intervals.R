@@ -478,7 +478,8 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
     # If the warm start is infeasible, halve the step up to 20 times
     prop0 <- prop_val; step0 <- step; hit0 <- hit_boundary
     n_halve <- 0L
-    while (!is.finite(.ll_val(theta_warm)) && n_halve < 20L) {
+    feasible <- is.finite(.ll_val(theta_warm))
+    while (!feasible && n_halve < 20L) {
       step <- step / 2
       prop_val <- val_cur + direction * step
       if (direction == -1L && prop_val < lower_clamp) {
@@ -488,8 +489,9 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
       theta_warm <- theta_cur
       theta_warm[test_idx] <- prop_val
       n_halve <- n_halve + 1L
+      feasible <- is.finite(.ll_val(theta_warm))
     }
-    if (!is.finite(.ll_val(theta_warm))) {
+    if (!feasible) {
       # Construct a feasible start at the original proposal instead
       step <- step0; prop_val <- prop0; hit_boundary <- hit0
       theta_warm <- theta_cur

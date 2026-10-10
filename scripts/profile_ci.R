@@ -1,4 +1,4 @@
-# Profiling study for ci_lmer / ci_all_lmer
+# Profiling study for vc_ci
 # Run this script interactively and inspect the profvis output in the viewer.
 
 library(reconf)
@@ -16,13 +16,13 @@ fit <- lmer(
 
 # ---------- Profile: single CI (random slope variance) ----------
 p_single <- profvis({
-  ci_lmer(fit, test_idx = 3L)
+  vc_ci(fit, parm = 3L)
 })
 print(p_single)
 
 # ---------- Profile: all CIs ----------
 p_all <- profvis({
-  ci_all_lmer(fit)
+  vc_ci(fit)
 })
 print(p_all)
 
@@ -35,6 +35,6 @@ fit_reml <- lmer(
 )
 
 p_reml <- profvis({
-  ci_lmer(fit_reml, test_idx = 3L)
+  vc_ci(fit_reml, parm = 3L)
 })
 print(p_reml)

@@ -1,45 +1,3 @@
-# get the row and column index from the vectorization of the
-# lower triangular part of an n x n matrix
-get_row_col_ltri <- function(idx, n)
-{
-  last_idx <- as.integer(n * (n + 1) / 2)
-  stopifnot(idx <= last_idx)
-  # Count backwards from the end to our idx
-  back_idx <- last_idx - idx + 1
-  # Column counting from the right
-  back_col <- ceiling(0.5 * (-1 + sqrt(1 + 8 * back_idx)))
-  # Column counting from the left
-  col <- n - back_col + 1
-
-  # Get the row
-  row <- 0.5 * back_col * (back_col + 1)
-  row <- (n - back_col) + (row - back_idx) + 1
-  c(row, col)
-}
-
-# Get the index in vectorization of lower triangular
-get_idx_ltri <- function(row, col, n)
-{
-  stopifnot(row >= col && row <= n && col <= n)
-  back_col <- n - col + 1
-  # Indexing counting backwards from the end
-  back_idx <- 0.5 * back_col * (back_col + 1) + col - row
-  0.5 * n * (n + 1) - back_idx + 1
-}
-
-# Human-readable names for covariance parameters, from the data frame
-# as.data.frame(VarCorr(fit), order = "lower.tri"). The residual row has
-# var1 = var2 = NA and is named by grp alone; variance rows have var2 = NA;
-# covariance rows have both variables.
-.param_names <- function(vc, idx = seq_len(nrow(vc))) {
-  vapply(idx, function(i) {
-    if (is.na(vc$var1[i])) return(vc$grp[i])
-    paste0(vc$var1[i],
-           if (is.na(vc$var2[i])) "" else paste0(":", vc$var2[i]),
-           " | ", vc$grp[i])
-  }, character(1))
-}
-
 # Solve A %*% x = b for symmetric A. Tries Cholesky first (fast); falls back
 # to eigendecomposition-based pseudoinverse when A is not positive definite.
 .solve_sym_eigen <- function(A, b, tol = 1e-10) {
@@ -49,6 +7,23 @@ get_idx_ltri <- function(row, col, n)
   threshold <- tol * max(abs(ed$values))
   inv_vals <- ifelse(abs(ed$values) > threshold, 1 / ed$values, 0)
   ed$vectors %*% (inv_vals * (t(ed$vectors) %*% b))
+}
+
+# Resolve parameters given as names or as indices into the covariance
+# parameters to indices; NULL stays NULL. nms are the parameter names and
+# arg names the argument in error messages.
+.parm_index <- function(parm, nms, arg) {
+  if (is.null(parm)) return(NULL)
+  if (is.character(parm)) {
+    idx <- match(parm, nms)
+    if (anyNA(idx)) {
+      stop("unknown ", arg, ": ", paste(parm[is.na(idx)], collapse = ", "),
+           ". The parameters are ", paste(nms, collapse = ", "))
+    }
+    parm <- idx
+  }
+  .check_idx(parm, arg, length(nms), unique = TRUE)
+  as.integer(parm)
 }
 
 # Feasibility check: Sigma = psi_r (I_n + Z Psi_r Z') is positive definite
@@ -106,7 +81,7 @@ get_idx_ltri <- function(row, col, n)
 # The dense paths win when Z is dense: the q-side then degenerates to dense
 # q x q algebra (same benchmark: 50-140x in favor of n-side). The density
 # threshold is a heuristic; callers can always force a path via method.
-get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
+get_precomp <- function(Y, X, Z, Hlist = NULL,
                         method = c("auto", "q_side", "n_side", "spectral")) {
   method <- match.arg(method)
   if (method == "auto") {
@@ -118,9 +93,10 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
     }
   }
   if (method == "spectral") {
-    assertthat::assert_that(is.list(Hlist), length(Hlist) == 1,
-                            msg = paste("method = 'spectral' requires exactly",
-                                        "one structure matrix (r = 2)"))
+    if (!(is.list(Hlist) && length(Hlist) == 1)) {
+      stop("method = 'spectral' requires exactly one structure matrix (r = 2)",
+           call. = FALSE)
+    }
     K <- as.matrix(Matrix::tcrossprod(Z %*% Hlist[[1]], Z))
     ed <- eigen(K, symmetric = TRUE)
     return(list("d" = ed$values,
@@ -129,8 +105,9 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
                 "method" = "spectral"))
   }
   if (method == "n_side") {
-    assertthat::assert_that(is.list(Hlist),
-                            msg = "Hlist is required when method = 'n_side'")
+    if (!is.list(Hlist)) {
+      stop("Hlist is required when method = 'n_side'", call. = FALSE)
+    }
     n <- nrow(Z)
     K <- do.call(cbind, lapply(Hlist, function(Hj) {
       as.matrix(Matrix::tcrossprod(Z %*% Hj, Z))
@@ -154,12 +131,10 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
   precomp <- list("XtX" = as.matrix(crossprod(X)),
                   "XtZ" = as.matrix(crossprod(X, Z)),
                   "ZtZ" = ZtZ,
+                  "XtY" = as.vector(crossprod(X, Y)),
+                  "ZtY" = as.vector(crossprod(Z, Y)),
                   "R" = R,
                   "method" = "q_side")
-  if (REML) {
-    precomp$XtY <- as.vector(crossprod(X, Y))
-    precomp$ZtY <- as.vector(crossprod(Z, Y))
-  }
   if (!is.null(Hlist)) {
     precomp$H <- methods::as(do.call(cbind, Hlist), "generalMatrix")
     if (!is.null(R)) {
@@ -181,6 +156,26 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
   precomp
 }
 
+# Where each covariance parameter appears in Psi = sum_j psi_j H_j, from the
+# structure matrices alone: on_diag[i, j] is TRUE if psi_j is the i-th
+# diagonal entry of Psi, and n_off[i, j] counts the off-diagonal entries of
+# row i that equal psi_j. is_var (length r) marks the variances: the
+# parameters on the diagonal of Psi, and the error variance.
+.psi_structure <- function(Hlist) {
+  if (length(Hlist) == 0) {
+    return(list(on_diag = matrix(FALSE, 0, 0), n_off = matrix(0, 0, 0),
+                is_var = TRUE))
+  }
+  q <- ncol(Hlist[[1]])
+  on_diag <- matrix(vapply(Hlist, function(H) as.vector(Matrix::diag(H) != 0),
+                           logical(q)), q)
+  n_off <- matrix(vapply(Hlist, function(H) {
+    nz <- H != 0
+    as.vector(Matrix::rowSums(nz)) - as.vector(Matrix::diag(nz))
+  }, numeric(q)), q)
+  list(on_diag = on_diag, n_off = n_off, is_var = c(colSums(on_diag) > 0, TRUE))
+}
+
 # Stop unless the argument is a fitted lmer model
 .check_lmerfit <- function(lmerfit) {
   if (!inherits(lmerfit, "lmerMod")) {
@@ -189,83 +184,61 @@ get_precomp <- function(Y, X, Z, REML = TRUE, Hlist = NULL,
   invisible(TRUE)
 }
 
-# Shared validation for entry points taking a full parameter vector
-# (maximize_loglik, score_stat): model arguments, single-logical flags, and
-# the parameter vector, whose length must be r under REML and p + r
-# otherwise. flags is a named list of the logical arguments to check.
-.check_lmm_args <- function(theta, theta_name, Y, X, Z, Hlist, REML, precomp,
-                            flags) {
-  assertthat::assert_that(is.vector(theta, mode = "numeric"),
-                          length(theta) > 0,
-                          msg = paste(theta_name, "should be a numeric",
-                                      "vector of positive length"))
-
-  assertthat::assert_that(is.vector(Y, mode = "numeric"), length(Y) > 0,
-                          msg = paste("Y should be a numeric vector of",
-                                      "positive length"))
-
-  assertthat::assert_that(is.matrix(X), nrow(X) == length(Y),
-                          msg = paste("X should be a matrix with",
-                                      "nrow(X) == length(Y)"))
-
-  assertthat::assert_that(is(Z, "sparseMatrix"), nrow(Z) == length(Y),
-                          ncol(Z) > 0,
-                          msg = paste("Z should be a sparse matrix with",
-                                      "nrow(Z) == length(Y) and ncol(Z) > 0"))
-
-  assertthat::assert_that(is.list(Hlist), length(Hlist) > 0,
-                          all(sapply(Hlist, methods::is, "sparseMatrix")),
-                          msg = "Hlist should be a list of sparse matrices")
-
-  for (nm in names(flags)) {
-    assertthat::assert_that(is.logical(flags[[nm]]), length(flags[[nm]]) == 1,
-                            msg = paste(nm, "should be a single logical value"))
+# Validate the model arguments of make_loglik. Conditions
+# are joined by && so later ones are evaluated only when earlier ones hold.
+.check_model <- function(Y, X, Z, Hlist, precomp = NULL) {
+  if (!(is.vector(Y, mode = "numeric") && length(Y) > 0)) {
+    stop("Y should be a numeric vector of positive length", call. = FALSE)
   }
+  if (!(is.matrix(X) && nrow(X) == length(Y))) {
+    stop("X should be a matrix with nrow(X) == length(Y)", call. = FALSE)
+  }
+  if (!(is(Z, "sparseMatrix") && nrow(Z) == length(Y) && ncol(Z) > 0)) {
+    stop("Z should be a sparse matrix with nrow(Z) == length(Y) and ",
+         "ncol(Z) > 0", call. = FALSE)
+  }
+  if (!(is.list(Hlist) &&
+        all(vapply(Hlist, methods::is, logical(1), "sparseMatrix")) &&
+        all(vapply(Hlist, function(H) all(dim(H) == ncol(Z)), logical(1))))) {
+    stop("Hlist should be a list of q x q sparse matrices, q = ncol(Z)",
+         call. = FALSE)
+  }
+  if (!(is.null(precomp) || is.list(precomp))) {
+    stop("precomp should be NULL or a list", call. = FALSE)
+  }
+  invisible(TRUE)
+}
 
-  assertthat::assert_that(is.null(precomp) || is.list(precomp),
-                          msg = "precomp should be NULL or a list")
+# Validate a vector of covariance parameters for a model with structure
+# matrices Hlist, or with r parameters if Hlist is NULL
+.check_psi <- function(psi, Hlist = NULL, r = length(Hlist) + 1) {
+  if (!(is.vector(psi, mode = "numeric") && (is.null(r) || length(psi) == r))) {
+    stop("psi should be a numeric vector of length r = ", r, call. = FALSE)
+  }
+  invisible(TRUE)
+}
 
-  expected_length <- length(Hlist) + 1 + if (REML) 0 else ncol(X)
-  assertthat::assert_that(length(theta) == expected_length,
-                          msg = paste0(theta_name, " should have length ",
-                                       expected_length, " (",
-                                       if (REML) "r" else "p + r",
-                                       " for REML = ", REML, ")"))
+# Validate a named list of single logical arguments
+.check_flags <- function(flags) {
+  for (nm in names(flags)) {
+    if (!(is.logical(flags[[nm]]) && length(flags[[nm]]) == 1)) {
+      stop(nm, " should be a single logical value", call. = FALSE)
+    }
+  }
   invisible(TRUE)
 }
 
 # Validate a vector of indices into a parameter vector of length n_par
 .check_idx <- function(idx, idx_name, n_par, unique = FALSE) {
-  assertthat::assert_that(is.vector(idx, mode = "numeric"), length(idx) > 0,
-                          all(idx == floor(idx)), all(idx > 0),
-                          msg = paste(idx_name, "should be a vector of",
-                                      "positive integers"))
-  assertthat::assert_that(max(idx) <= n_par,
-                          msg = paste0(idx_name, " values must not exceed ",
-                                       n_par))
-  if (unique) {
-    assertthat::assert_that(length(unique(idx)) == length(idx),
-                            msg = paste(idx_name, "should not contain",
-                                        "duplicate values"))
+  if (!(is.vector(idx, mode = "numeric") && length(idx) > 0 &&
+        !anyNA(idx) && all(idx == floor(idx)) && all(idx > 0))) {
+    stop(idx_name, " should be a vector of positive integers", call. = FALSE)
+  }
+  if (max(idx) > n_par) {
+    stop(idx_name, " values must not exceed ", n_par, call. = FALSE)
+  }
+  if (unique && anyDuplicated(idx) > 0) {
+    stop(idx_name, " should not contain duplicate values", call. = FALSE)
   }
   invisible(TRUE)
-}
-
-# Shared setup for the score-test entry points: validate a user-supplied
-# theta_null length and default test_idx to all random-effect parameters
-.check_theta_null <- function(theta_null, REML, p, r) {
-  expected_length <- if (REML) r else p + r
-  if (length(theta_null) != expected_length) {
-    stop("theta_null should have length ", expected_length,
-         " (", if (REML) "r" else "p + r", " for REML = ", REML, ")")
-  }
-  invisible(TRUE)
-}
-
-.setup_test_idx <- function(test_idx, REML, p, r) {
-  if (is.null(test_idx)) {
-    test_idx <- if (REML) seq_len(r - 1) else (p + 1):(p + r - 1)
-  }
-  if (length(test_idx) == 0) stop("test_idx must have length > 0")
-  test_idx
 }

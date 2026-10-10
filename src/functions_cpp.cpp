@@ -4,10 +4,11 @@
 //'
 //' Constructs the covariance matrix of the random effects
 //'
-//' @param psi_mr A vector of covariance parameter (see ?loglikelihood)
+//' @param psi_mr A vector of covariance parameter (see ?make_loglik)
 //' @param H Sparse matrix of derivatives of Psi with respect to elements of psi,
 //'        \eqn{H = [H_1, \dots , H_{r - 1}]}, where \eqn{H_j = \partial \Psi / \partial \psi_j}.
 //' @return The covariance matrix \eqn{\Psi}
+//' @noRd
 // [[Rcpp::export]]
 Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi_mr,
                                            const Eigen::MappedSparseMatrix<double> H) { //
@@ -22,10 +23,11 @@ Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi
   return Psi;
 }
 
-//' Log-likelihood using RcppEigen
+//' Profile log-likelihood using RcppEigen
 //'
-//' Computes the log-likelihood, score vector, and information matrix
-//' for the covariance parameter vector in a linear mixed effects model.
+//' Computes the log-likelihood maximized over the fixed effects, and its
+//' score vector and information matrix for the covariance parameters of a
+//' linear mixed effects model.
 //'
 //' @param A The \eqn{q \times q} sparse matrix
 //'        \eqn{A = (I_q + \Psi_r Z'Z)^{-1} \Psi_r}, where \eqn{\Psi_r = \Psi / \psi_r},
@@ -35,21 +37,23 @@ Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi
 //' @param psi_r The error variance \eqn{\psi_r > 0}.
 //' @param H Sparse \eqn{q \times (qr - q)} matrix of horizontally concatenated
 //'        derivatives of \eqn{\Psi} (see details) of class \code{dgCMatrix}.
-//' @param e Vector of length \eqn{n} of errors, or residuals, \eqn{e = Y - X \beta}.
+//' @param Y Vector of length \eqn{n} of responses.
 //' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
 //' @param Z Sparse \eqn{n \times q} random effect design matrix of class \code{dgCMatrix}.
 //' @param XtX Precomputed matrix \code{crossprod(X)} of class \code{matrix}.
 //' @param XtZ Precomputed matrix \code{crossprod(X, Z)} of class \code{matrix}.
 //' @param ZtZ Precomputed matrix \code{crossprod(Z)} of class \code{dgCMatrix}.
+//' @param XtY Precomputed vector \code{crossprod(X, Y)}.
+//' @param ZtY Precomputed vector \code{crossprod(Z, Y)}.
 //' @param get_val If \code{TRUE}, the value of the loglikelihood is computed.
 //' @param get_score If \code{TRUE} the score vector is calculated.
 //' @param get_inf If \code{TRUE}, an information matrix is calculated.
 //' @param expected If \code{TRUE}, the expected information is calculated; otherwise
-//' the observed, or negative Hessian of the loglikelihood.
+//' the observed, or negative Hessian of the profile loglikelihood.
 //'
 //' @return A list with components:
-//' \item{value}{The value of the log-likelihood}
-//' \item{score}{The score, or gradient of the log-likelihood, for \eqn{\psi}}
+//' \item{value}{The value of the profile log-likelihood}
+//' \item{score}{Its gradient, the score for \eqn{\psi}}
 //' \item{inf_mat}{The information matrix for \eqn{\psi}}
 //'
 //' @details The model is \deqn{Y = X\beta + Z U + E,} where \eqn{U \sim N_q(0, \Psi)}
@@ -61,46 +65,70 @@ Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi
 //' are variances and covariances of random effects.
 //' The argument matrix \code{H} is \eqn{H = [H_1, \dots, H_{r - 1}]}.
 //'
-//' The fixed effects \eqn{\beta} affect the likelihood only through the
-//' precomputed \eqn{e = Y - X\beta}.
-//'
-//' The information matrix includes both \eqn{\beta} and \eqn{\psi} parameters,
-//' with dimensions \eqn{(p + r) \times (p + r)}.
+//' The fixed effects are profiled out: the log-likelihood is evaluated at
+//' the generalized least squares estimate
+//' \eqn{\hat\beta(\psi) = (X'\Sigma^{-1}X)^{-1}X'\Sigma^{-1}Y}. Its gradient
+//' in \eqn{\psi} is the score for \eqn{\psi} at \eqn{\hat\beta(\psi)}, and its
+//' negative Hessian is the Schur complement of the \eqn{\beta} block in the
+//' observed information for \eqn{(\beta, \psi)}. The expected information
+//' for \eqn{(\beta, \psi)} has a zero cross block, so its Schur complement is
+//' its \eqn{\psi} block.
 //'
 //' The caller must verify that the parameters are feasible, that is,
 //' \eqn{\psi_r > 0} and \eqn{\Sigma = Z \Psi Z' + \psi_r I_n} positive
 //' definite, and must compute \code{A} and \code{ldetB}. Solving for
 //' \code{A} with a solver that exploits sparsity in the right-hand side (for
 //' example \code{Matrix::solve}) is much faster than a dense solve when the
-//' random effects are block-structured.
+//' random effects are block-structured. If \eqn{X'\Sigma^{-1}X} is not
+//' positive definite, \code{value} is \code{-Inf} and score and information
+//' are zero.
 //'
-//' @useDynLib reconf, .registration=TRUE
-//' @import Matrix
+//' @noRd
 // [[Rcpp::export]]
-
 Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
                   const double ldetB,
                   const double psi_r,
                   Eigen::SparseMatrix<double> H,
-                  const Eigen::Map<Eigen::VectorXd> e,
+                  const Eigen::Map<Eigen::VectorXd> Y,
                   const Eigen::Map<Eigen::MatrixXd> X,
                   const Eigen::MappedSparseMatrix<double> Z,
                   const Eigen::Map<Eigen::MatrixXd> XtX,
                   const Eigen::Map<Eigen::MatrixXd> XtZ,
                   const Eigen::MappedSparseMatrix<double> ZtZ,
+                  const Eigen::Map<Eigen::VectorXd> XtY,
+                  const Eigen::Map<Eigen::VectorXd> ZtY,
                   const bool get_val = true,
                   const bool get_score = true,
                   const bool get_inf = true,
                   const bool expected = true) {
   // Define dimensions
   int p = X.cols();
-  int n = e.size();
+  int n = Y.size();
   int q = A.cols();
   int r = H.cols() / q + 1;
 
-  // Initialize returns (allocate only when needed)
+  // Returns for psi; zeros are also the infeasible returns
   double ll = NA_REAL;
-  Eigen::VectorXd S = get_score || get_inf ? Eigen::VectorXd::Zero(p + r) : Eigen::VectorXd();
+  Eigen::VectorXd S_psi = Eigen::VectorXd::Zero(r);
+  Eigen::MatrixXd I_psi = Eigen::MatrixXd::Zero(r, r);
+
+  // Profile out beta: U = X'Sigma^{-1}X and the generalized least squares
+  // estimate, from which e = Y - X beta
+  Eigen::MatrixXd U = (1.0 / psi_r) * (XtX - XtZ * (A * XtZ.transpose()));
+  Eigen::LLT<Eigen::MatrixXd, Eigen::Upper> llt(U);
+  if (p > 0 && llt.info() != Eigen::Success) {
+    return Rcpp::List::create(Rcpp::Named("value") = -R_PosInf,
+                              Rcpp::Named("score") = S_psi,
+                              Rcpp::Named("inf_mat") = I_psi);
+  }
+  Eigen::VectorXd e = Y;
+  if (p > 0) {
+    e -= X * llt.solve((1.0 / psi_r) * (XtY - XtZ * (A * ZtY)));
+  }
+
+  // Score and information for (beta, psi) at the estimate, in blocks of
+  // size p and r; the beta block of the information is U
+  Eigen::VectorXd S = Eigen::VectorXd::Zero(p + r);
   Eigen::MatrixXd I = get_inf ? Eigen::MatrixXd::Zero(p + r, p + r) : Eigen::MatrixXd();
 
   // Initialize identity matrix
@@ -117,13 +145,8 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
 
   if (!get_score && !get_inf) {
     return Rcpp::List::create(Rcpp::Named("value") = ll,
-                              Rcpp::Named("score") = S,
-                              Rcpp::Named("inf_mat") = I);
-  }
-
-  // Get score for beta
-  if(p > 0) {
-    S.head(p) = X.transpose() * etilde;
+                              Rcpp::Named("score") = S_psi,
+                              Rcpp::Named("inf_mat") = I_psi);
   }
 
   // Get score for psi
@@ -147,9 +170,6 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
       S(p + ii) -= 0.5 * H.middleCols(ii * q, q).cwiseProduct(B).sum();
     }
   } else {
-    if(p > 0) {
-      I.topLeftCorner(p, p) = (1 / psi_r) * (XtX - XtZ * (A * XtZ.transpose()));
-    }
     Eigen::SparseMatrix<double> H1 = C.transpose(); // This is replaced later.
     // Putting instead C.transpose() in next call does not compile
     I(p + r - 1, p + r - 1) = (0.5 / (psi_r * psi_r)) *
@@ -196,10 +216,21 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
       }
     }
   }
-  I = I.selfadjointView<Eigen::Upper>();
+
+  // Score for psi and the Schur complement of the beta block, which only
+  // the observed information needs
+  S_psi = S.tail(r);
+  if (get_inf) {
+    I = I.selfadjointView<Eigen::Upper>();
+    I_psi = I.bottomRightCorner(r, r);
+    if (!expected && p > 0) {
+      Eigen::MatrixXd Cb = I.topRightCorner(p, r);
+      I_psi -= Cb.transpose() * llt.solve(Cb);
+    }
+  }
   return Rcpp::List::create(Rcpp::Named("value") = ll,
-                            Rcpp::Named("score") = S,
-                            Rcpp::Named("inf_mat") = I);
+                            Rcpp::Named("score") = S_psi,
+                            Rcpp::Named("inf_mat") = I_psi);
 }
 
 //' Restricted log-likelihood using RcppEigen
@@ -226,16 +257,14 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
 //' @param get_val If \code{TRUE}, the value of the loglikelihood is computed.
 //' @param get_score If \code{TRUE} the score vector is calculated.
 //' @param get_inf If \code{TRUE}, an information matrix is calculated.
+//' @param expected If \code{TRUE}, the expected information is calculated;
+//'        otherwise the observed, or negative Hessian of the restricted
+//'        log-likelihood.
 //'
 //' @return A list with components:
 //' \item{value}{The value of the restricted log-likelihood}
 //' \item{score}{The restricted score, or gradient of the restricted log-likelihood, for \eqn{\psi}}
 //' \item{inf_mat}{The restricted information matrix for \eqn{\psi}}
-//' \item{beta}{Partial maximizer of the regular likelihood in \eqn{\beta},
-//'   \eqn{\tilde{\beta} = (X' \Sigma^{-1} X)^{-1} X' \Sigma^{-1}Y},
-//'   where \eqn{\Sigma = Z\Psi Z' + \psi_r I_n}}
-//' \item{I_b_chol}{Cholesky root of the expected information matrix
-//'   for \eqn{\beta}, \eqn{I(\beta; \psi) = X' \Sigma^{-1} X}}
 //'
 //' @details See \code{?loglik} for the model and the parameterization of
 //' \eqn{\Psi} through \code{H}. The restricted likelihood integrates out the
@@ -249,8 +278,15 @@ Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
 //' slow generic paths in the information computations, and the copies are
 //' cheap relative to the algebra.
 //'
-//' @useDynLib reconf, .registration=TRUE
-//' @import Matrix
+//' The observed information is the expected information with the sign
+//' flipped plus the stochastic matrix with entries
+//' \eqn{u_j' \Sigma^{-1} Q u_k}, where \eqn{u_j = Z H_j Z' \tilde{e}}
+//' (\eqn{u_r = \tilde{e}}), \eqn{\tilde{e} = \Sigma^{-1}(Y - X\tilde{\beta})}
+//' with \eqn{\tilde{\beta} = (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}Y},
+//' and \eqn{Q = I_n - X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}}. The added
+//' terms are matrix-vector products, so they cost no more than the score.
+//'
+//' @noRd
 // [[Rcpp::export]]
 Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
                       const double ldetB,
@@ -266,7 +302,8 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
                       const Eigen::Map<Eigen::VectorXd> ZtY,
                       const bool get_val = true,
                       const bool get_score = true,
-                      const bool get_inf = true)
+                      const bool get_inf = true,
+                      const bool expected = true)
 {
   // Define dimensions
   int n = Y.size();
@@ -283,8 +320,11 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
   Eigen::SparseMatrix<double> Id_q(q, q);
   Id_q.setIdentity();
 
+  // X'Z A (p x q), shared by X'Sigma^{-1}X, the score, and the information
+  Eigen::MatrixXd XtZA = XtZ * A;
+
   //Create XtSiX
-  Eigen::MatrixXd U = (1.0 / psi_r) * (XtX - XtZ * A * XtZ.transpose());  //p*p
+  Eigen::MatrixXd U = (1.0 / psi_r) * (XtX - XtZA * XtZ.transpose());  //p*p
 
   // Force symmetric
   U = U.selfadjointView<Eigen::Upper>();
@@ -295,9 +335,7 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     return Rcpp::List::create(
       Rcpp::Named("value") = -R_PosInf,
       Rcpp::Named("score") = s_psi,
-      Rcpp::Named("inf_mat") = I_psi,
-      Rcpp::Named("beta") = Eigen::VectorXd::Constant(p, NA_REAL),
-      Rcpp::Named("I_b_chol") = Eigen::MatrixXd::Constant(p, p, NA_REAL));
+      Rcpp::Named("inf_mat") = I_psi);
   }
 
   // Create XtSiY and \tilde{\beta}
@@ -320,38 +358,59 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     ll *= -0.5;
   }
 
-  if (get_score) {
-    // Stochastic part of the restricted score for psi
-    s_psi(r - 1) = 0.5 * etilde.dot(etilde);
-    Eigen::VectorXd v = Z.transpose() * etilde;
-    for (int ii = 0; ii < r - 1; ii++) {
-      s_psi(ii) = 0.5 * v.dot(H.middleCols(ii * q, q) * v);
-    }
+  if (!get_score && !get_inf) {
+    return Rcpp::List::create(
+      Rcpp::Named("value") = ll,
+      Rcpp::Named("score") = s_psi,
+      Rcpp::Named("inf_mat") = I_psi);
+  }
+
+  // v = Z'Sigma^{-1}e is shared by the score and the observed information
+  Eigen::VectorXd v = Z.transpose() * etilde;
+
+  // Stochastic part of the restricted score for psi
+  s_psi(r - 1) = 0.5 * etilde.dot(etilde);
+  for (int ii = 0; ii < r - 1; ii++) {
+    s_psi(ii) = 0.5 * v.dot(H.middleCols(ii * q, q) * v);
   }
   /////////////////////////////////////////////////////////////////////////////
-  // NOTHING BELOW SHOULD DEPEND ON Y / NONSTOCHASTIC PARTS
+  // NOTHING BELOW DEPENDS ON Y EXCEPT THE expected = false BLOCK AT THE END
   /////////////////////////////////////////////////////////////////////////////
+  // Matrices shared by the score and the information
+  Eigen::SparseMatrix<double> C = Id_q - A * ZtZ;
+  // G = X'Sigma^{-1}Z (p x q, dense)
+  Eigen::MatrixXd G = (1.0 / psi_r) * XtZ * C;
+  Eigen::MatrixXd E1 = llt.solve(G);
+  // S = Z'Sigma^{-1}Z (sparse) and Q_j = E1 H_j (p x q)
+  Eigen::SparseMatrix<double> S = (1.0 / psi_r) * ZtZ * C;
+  std::vector<Eigen::MatrixXd> Q(r - 1);
+  for (int jj = 0; jj < r - 1; jj++) {
+    Q[jj] = E1 * H.middleCols(jj * q, q);
+  }
+
+  // Deterministic part of the restricted score, -0.5 tr(P K_j), using the
+  // decomposition Z'P Z = S - G'E1 described below; the psi_r term is
+  // -0.5 tr(P) = -0.5 [tr(Sigma^{-1}) - tr(D_{(2)})]
+  s_psi(r - 1) -= (0.5 / psi_r) * (n - q + C.diagonal().sum());
+  s_psi(r - 1) += (0.5 / psi_r) * (p - E1.cwiseProduct(XtZA).sum());
+  for (int jj = 0; jj < r - 1; jj++) {
+    // Score for psi_j: tr(S H_j) - tr(G'E1 H_j)
+    s_psi(jj) -= 0.5 * S.cwiseProduct(H.middleCols(jj * q, q)).sum() -
+      0.5 * Q[jj].cwiseProduct(G).sum();
+  }
+
   if (get_inf) {
-    // Create matrices used repeatedly
     Eigen::SparseMatrix<double> Id_p(p, p);
     Id_p.setIdentity();
-    Eigen::SparseMatrix<double> C = Id_q - A * ZtZ;
-    // G = X'Sigma^{-1}Z (p x q, dense)
-    Eigen::MatrixXd G = (1.0 / psi_r) * XtZ * C;
-    Eigen::MatrixXd E1 = llt.solve(G);
     Eigen::MatrixXd D2 = (1.0 / psi_r) * (Id_p - E1 * (A * XtZ.transpose()));
     Eigen::MatrixXd E2 = (1.0 / psi_r) * E1 * C;
-
-    // Score for psi_r is done after this
-    s_psi(r - 1) -= (0.5 / psi_r) * (n - q + C.diagonal().sum());
-    s_psi(r - 1) += 0.5 * D2.diagonal().sum();
 
     ////////////////////////////////////////////////////////////////////////////
     // Information for psi_r
     ////////////////////////////////////////////////////////////////////////////
     // The term -tr(D_{(3)})
     I_psi(r - 1, r - 1) = (-1.0 / psi_r) * (D2.diagonal().sum() -
-      E2.cwiseProduct(XtZ * A).sum());
+      E2.cwiseProduct(XtZA).sum());
 
     Eigen::SparseMatrix<double> Ct = C.transpose();
 
@@ -363,7 +422,7 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     I_psi(r - 1, r - 1) += 0.5 * D2.transpose().cwiseProduct(D2).sum();
 
     ////////////////////////////////////////////////////////////////////////////
-    // Information and score for psi_{-r}
+    // Information for psi_{-r}
     ////////////////////////////////////////////////////////////////////////////
     // All traces use the decomposition F = Z'P Z = S - G'E1, where
     // S = Z'Sigma^{-1}Z is sparse and G'E1 = G'(X'Sigma^{-1}X)^{-1}G has rank
@@ -375,24 +434,18 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
     //                     - tr(S H_k G'E1 H_j) + tr(E1 H_j G' E1 H_k G')
     // using symmetry of S, H_j, and G'E1, and tr(S H_j G'E1 H_k)
     // = sum((E1 H_k S H_j) .* G).
-    Eigen::SparseMatrix<double> S = (1.0 / psi_r) * ZtZ * C;
     Eigen::SparseMatrix<double> ZtSi2Z = (1.0 / psi_r) * S * C;
     Eigen::MatrixXd E3 = D2 * E1;
 
     std::vector<Eigen::SparseMatrix<double>> SH(r - 1);
-    std::vector<Eigen::MatrixXd> Q(r - 1), QS(r - 1), Rp(r - 1);
+    std::vector<Eigen::MatrixXd> QS(r - 1), Rp(r - 1);
     for (int jj = 0; jj < r - 1; jj++) {
       SH[jj] = S * H.middleCols(jj * q, q);
-      Q[jj]  = E1 * H.middleCols(jj * q, q);   // p x q
       QS[jj] = Q[jj] * S;                      // p x q
       Rp[jj] = Q[jj] * G.transpose();          // p x p
     }
 
     for(int jj = 0; jj < r - 1; jj++) {
-      // Score for psi_j: tr(S H_j) - tr(G'E1 H_j)
-      s_psi(jj) -= 0.5 * S.cwiseProduct(H.middleCols(jj * q, q)).sum() -
-        0.5 * Q[jj].cwiseProduct(G).sum();
-
       // Information for I(psi_j, psi_r)
       I_psi(jj, r - 1) = 0.5 * ZtSi2Z.cwiseProduct(H.middleCols(jj * q, q)).sum()
        - (E2 * H.middleCols(jj * q, q)).cwiseProduct(G).sum()
@@ -408,58 +461,72 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
         I_psi(kk, jj) = 0.5 * (t1 - t2 - t3 + t4);
       }
     }
-  } else if (get_score) {
-    // Terms for S(psi_j); same rank-p decomposition as in the get_inf branch
-    Eigen::SparseMatrix<double> C = Id_q - A * ZtZ;
-    Eigen::MatrixXd G = (1.0 / psi_r) * XtZ * C;
-    Eigen::MatrixXd E1 = llt.solve(G);
 
-    s_psi(r - 1) -= (0.5 / psi_r) * (n - q + C.diagonal().sum());
-    s_psi(r - 1) += (0.5 / psi_r) * (p - E1.cwiseProduct(XtZ * A).sum());
-
-    Eigen::SparseMatrix<double> S = (1.0 / psi_r) * ZtZ * C;
-
-    for(int jj = 0; jj < r - 1; jj++) {
-      // Score for psi_j: tr(S H_j) - tr(G'E1 H_j)
-      s_psi(jj) -= 0.5 * S.cwiseProduct(H.middleCols(jj * q, q)).sum() -
-        0.5 * (E1 * H.middleCols(jj * q, q)).cwiseProduct(G).sum();
+    if (!expected) {
+      // Observed information: flip the sign of the deterministic part and
+      // add the stochastic terms u_j' Si Q u_k, u_j = Z H_j Z' etilde
+      // (u_r = etilde). Z'(Si Q)Z = S - G'U^{-1}G as for the traces, and
+      // X'etilde = 0 (the GLS normal equations) gives
+      // X'Si etilde = -XtZ (A v) / psi_r, so no n-vectors are formed.
+      I_psi = -I_psi; // upper triangle; mirrored at the return
+      Eigen::VectorXd av = A * v;
+      Eigen::VectorXd h = (-1.0 / psi_r) * (XtZ * av);   // X'Si etilde
+      Eigen::VectorXd th = llt.solve(h);
+      if (r > 1) {
+        // Columns of W are w_j = H_j v; one pass over H gives them all
+        Eigen::VectorXd w = H.transpose() * v;
+        Eigen::Map<const Eigen::MatrixXd> W(w.data(), q, r - 1);
+        Eigen::MatrixXd Sw = S * W;
+        Eigen::MatrixXd Gw = G * W;
+        Eigen::MatrixXd UGw = llt.solve(Gw);
+        // z = Z'(Si Q) etilde
+        Eigen::VectorXd z = (1.0 / psi_r) * (v - ZtZ * av) -
+          G.transpose() * th;
+        for (int jj = 0; jj < r - 1; jj++) {
+          I_psi(jj, r - 1) += W.col(jj).dot(z);
+          for (int kk = 0; kk <= jj; kk++) {
+            I_psi(kk, jj) += W.col(kk).dot(Sw.col(jj)) -
+              Gw.col(kk).dot(UGw.col(jj));
+          }
+        }
+      }
+      I_psi(r - 1, r - 1) += (etilde.squaredNorm() - v.dot(av)) / psi_r -
+        h.dot(th);
     }
   }
 
-  Eigen::MatrixXd U_chol = llt.matrixU();
   I_psi = I_psi.selfadjointView<Eigen::Upper>();
   return Rcpp::List::create(
     Rcpp::Named("value") = ll,
     Rcpp::Named("score") = s_psi,
-    Rcpp::Named("inf_mat") = I_psi,
-    Rcpp::Named("beta") = beta_tilde,
-    Rcpp::Named("I_b_chol") = U_chol);
+    Rcpp::Named("inf_mat") = I_psi);
 }
 
-//' Log-likelihood via the n-by-n formulation
+//' Profile log-likelihood via the n-by-n formulation
 //'
-//' Computes the log-likelihood, score vector, and information matrix for the
-//' covariance parameters using dense n-by-n algebra. Intended for models
-//' where the number of random effects \eqn{q} exceeds, or is comparable to,
-//' the number of observations \eqn{n}; see \code{?loglik} for the model and
-//' the q-by-q counterpart.
+//' Computes the log-likelihood maximized over the fixed effects, and its
+//' score vector and information matrix for the covariance parameters, using
+//' dense n-by-n algebra. Intended for models where the number of random
+//' effects \eqn{q} exceeds, or is comparable to, the number of observations
+//' \eqn{n}; see \code{?loglik} for the model, the profiling, and the q-by-q
+//' counterpart.
 //'
 //' @param K Dense \eqn{n \times n(r - 1)} matrix of horizontally concatenated
 //'        \eqn{K_j = Z H_j Z'}. The \eqn{K_j} do not depend on \eqn{\psi} and
 //'        are precomputed once by \code{get_precomp}.
 //' @param psi Vector of length \eqn{r} of covariance parameters; the last
 //'        element is the error variance \eqn{\psi_r}.
-//' @param e Vector of length \eqn{n} of errors, or residuals, \eqn{e = Y - X\beta}.
+//' @param Y Vector of length \eqn{n} of responses.
 //' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
 //' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
 //' @param get_score If \code{TRUE} the score vector is calculated.
 //' @param get_inf If \code{TRUE}, an information matrix is calculated.
 //' @param expected If \code{TRUE}, the expected information is calculated;
-//'        otherwise the observed, or negative Hessian of the log-likelihood.
+//'        otherwise the observed, or negative Hessian of the profile
+//'        log-likelihood.
 //'
 //' @return A list with components \code{value}, \code{score}, and
-//' \code{inf_mat} as in \code{?loglik}, with score and information of
-//' dimension \eqn{p + r}.
+//' \code{inf_mat} as in \code{?loglik}.
 //'
 //' @details Each evaluation forms \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j}
 //' and factorizes it densely, so the cost is \eqn{O(r n^3 + r^2 n^2)},
@@ -469,28 +536,32 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
 //' caller: \eqn{\Sigma} is positive definite iff its Cholesky factorization
 //' succeeds. When \eqn{q \ge n}, \eqn{Z \Psi Z'} alone can be positive
 //' definite, so \eqn{\psi_r > 0} is checked separately. At infeasible
-//' parameters \code{value} is \code{-Inf} (regardless of \code{get_val}) and
-//' score and information are zero.
+//' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
+//' \code{value} is \code{-Inf} (regardless of \code{get_val}) and score and
+//' information are zero.
 //'
-//' @useDynLib reconf, .registration=TRUE
+//' @noRd
 // [[Rcpp::export]]
 Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
                     const Eigen::Map<Eigen::VectorXd> psi,
-                    const Eigen::Map<Eigen::VectorXd> e,
+                    const Eigen::Map<Eigen::VectorXd> Y,
                     const Eigen::Map<Eigen::MatrixXd> X,
                     const bool get_val = true,
                     const bool get_score = true,
                     const bool get_inf = true,
                     const bool expected = true) {
   // Define dimensions
-  const int n = e.size();
+  const int n = Y.size();
   const int p = X.cols();
   const int r = psi.size();
 
   // Initialize returns; zeros are also the infeasible-parameter returns
   double ll = NA_REAL;
-  Eigen::VectorXd S = Eigen::VectorXd::Zero(p + r);
-  Eigen::MatrixXd I = Eigen::MatrixXd::Zero(p + r, p + r);
+  Eigen::VectorXd S = Eigen::VectorXd::Zero(r);
+  Eigen::MatrixXd I = Eigen::MatrixXd::Zero(r, r);
+  Rcpp::List infeasible = Rcpp::List::create(Rcpp::Named("value") = -R_PosInf,
+                                             Rcpp::Named("score") = S,
+                                             Rcpp::Named("inf_mat") = I);
 
   // Form Sigma = psi_r I_n + sum_j psi_j K_j
   Eigen::MatrixXd Sigma = Eigen::MatrixXd::Zero(n, n);
@@ -506,9 +577,19 @@ Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
   // be positive definite when q >= n.
   Eigen::LLT<Eigen::MatrixXd> llt(Sigma);
   if (psi(r - 1) <= 0.0 || llt.info() != Eigen::Success) {
-    return Rcpp::List::create(Rcpp::Named("value") = -R_PosInf,
-                              Rcpp::Named("score") = S,
-                              Rcpp::Named("inf_mat") = I);
+    return infeasible;
+  }
+
+  // Profile out beta: W = Sigma^{-1}X, U = X'Sigma^{-1}X, and the
+  // generalized least squares estimate, from which e = Y - X beta
+  Eigen::MatrixXd W = llt.solve(X);
+  Eigen::LLT<Eigen::MatrixXd> llt_U(X.transpose() * W);
+  if (p > 0 && llt_U.info() != Eigen::Success) {
+    return infeasible;
+  }
+  Eigen::VectorXd e = Y;
+  if (p > 0) {
+    e -= X * llt_U.solve(W.transpose() * Y);
   }
 
   // log det Sigma from the Cholesky diagonal; etilde = Sigma^{-1} e
@@ -529,26 +610,15 @@ Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
   // or against the products M_j = Si K_j below
   Eigen::MatrixXd Si = llt.solve(Eigen::MatrixXd::Identity(n, n));
 
-  // Score for beta
-  if (p > 0) {
-    S.head(p) = X.transpose() * etilde;
-  }
-
   // Score for psi_j: 0.5 (e'Sigma^{-1} K_j Sigma^{-1} e - tr(Sigma^{-1} K_j));
   // K_j and Si are symmetric so the trace is an elementwise product sum
   for (int jj = 0; jj < r - 1; jj++) {
-    S(p + jj) = 0.5 * (etilde.dot(K.middleCols(jj * n, n) * etilde) -
+    S(jj) = 0.5 * (etilde.dot(K.middleCols(jj * n, n) * etilde) -
       Si.cwiseProduct(K.middleCols(jj * n, n)).sum());
   }
-  S(p + r - 1) = 0.5 * (etilde.squaredNorm() - Si.trace());
+  S(r - 1) = 0.5 * (etilde.squaredNorm() - Si.trace());
 
   if (get_inf) {
-    // Information for beta: X'Sigma^{-1}X (equals the observed block)
-    if (p > 0) {
-      Eigen::MatrixXd W = llt.solve(X);
-      I.topLeftCorner(p, p) = X.transpose() * W;
-    }
-
     // M_j = Sigma^{-1} K_j, with K_r = I_n for the error variance, so
     // I(psi_j, psi_k) = 0.5 tr(M_j M_k) uniformly in j, k
     std::vector<Eigen::MatrixXd> M(r);
@@ -558,29 +628,31 @@ Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
     M[r - 1] = Si;
     for (int jj = 0; jj < r; jj++) {
       for (int ii = 0; ii <= jj; ii++) {
-        I(p + ii, p + jj) = 0.5 * M[ii].cwiseProduct(M[jj].transpose()).sum();
+        I(ii, jj) = 0.5 * M[ii].cwiseProduct(M[jj].transpose()).sum();
       }
     }
 
     if (!expected) {
-      // Observed information: flip the sign of the deterministic psi block
-      // and add the stochastic terms u_j' Sigma^{-1} u_k, where
+      // Observed information: flip the sign of the deterministic block and
+      // add the stochastic terms u_j' Sigma^{-1} u_k, where
       // u_j = K_j Sigma^{-1} e (u_r = Sigma^{-1} e)
-      I.bottomRightCorner(r, r) = -I.bottomRightCorner(r, r);
+      I = -I;
       Eigen::MatrixXd Ue(n, r);
       for (int jj = 0; jj < r - 1; jj++) {
         Ue.col(jj) = K.middleCols(jj * n, n) * etilde;
       }
       Ue.col(r - 1) = etilde;
       Eigen::MatrixXd SUe = llt.solve(Ue);
-      I.bottomRightCorner(r, r) += Ue.transpose() * SUe;
-      // Cross terms with beta: X'Sigma^{-1} u_j (zero in expectation)
+      I += Ue.transpose() * SUe;
+      // Profile out beta: subtract C'U^{-1}C for the cross terms
+      // C = X'Sigma^{-1} u_j (zero in expectation)
       if (p > 0) {
-        I.topRightCorner(p, r) = X.transpose() * SUe;
+        Eigen::MatrixXd Cb = X.transpose() * SUe;
+        I -= Cb.transpose() * llt_U.solve(Cb);
       }
     }
+    I = I.selfadjointView<Eigen::Upper>();
   }
-  I = I.selfadjointView<Eigen::Upper>();
   return Rcpp::List::create(Rcpp::Named("value") = ll,
                             Rcpp::Named("score") = S,
                             Rcpp::Named("inf_mat") = I);
@@ -602,24 +674,30 @@ Rcpp::List loglik_n(const Eigen::Map<Eigen::MatrixXd> K,
 //' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
 //' @param get_score If \code{TRUE} the score vector is calculated.
 //' @param get_inf If \code{TRUE}, an information matrix is calculated.
+//' @param expected If \code{TRUE}, the expected information is calculated;
+//'        otherwise the observed, or negative Hessian of the restricted
+//'        log-likelihood.
 //'
-//' @return A list with components \code{value}, \code{score}, \code{inf_mat},
-//' \code{beta}, and \code{I_b_chol} as in \code{?loglik_res}.
+//' @return A list with components \code{value}, \code{score}, and
+//' \code{inf_mat} as in \code{?loglik_res}.
 //'
 //' @details All quantities are computed from the dense factorization of
 //' \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j} and the projection
 //' \eqn{P = \Sigma^{-1} - \Sigma^{-1} X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}},
 //' formed explicitly as an \eqn{n \times n} matrix: the restricted score is
 //' \eqn{0.5\{e'\Sigma^{-1} K_j \Sigma^{-1} e - tr(P K_j)\}} with
-//' \eqn{e = Y - X\tilde\beta}, and the expected information is
-//' \eqn{0.5 tr(P K_j P K_k)}.
+//' \eqn{e = Y - X\tilde\beta}, the expected information is
+//' \eqn{0.5 tr(P K_j P K_k)}, and the observed information is the expected
+//' information with the sign flipped plus the stochastic terms
+//' \eqn{u_j' P u_k}, where \eqn{u_j = K_j \Sigma^{-1} e}
+//' (\eqn{u_r = \Sigma^{-1} e}).
 //'
 //' Feasibility is decided here as in \code{?loglik_n}: at infeasible
 //' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
-//' \code{value} is \code{-Inf} (regardless of \code{get_val}), score and
-//' information are zero, and \code{beta} and \code{I_b_chol} are \code{NA}.
+//' \code{value} is \code{-Inf} (regardless of \code{get_val}) and score
+//' and information are zero.
 //'
-//' @useDynLib reconf, .registration=TRUE
+//' @noRd
 // [[Rcpp::export]]
 Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
                         const Eigen::Map<Eigen::VectorXd> psi,
@@ -627,22 +705,21 @@ Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
                         const Eigen::Map<Eigen::MatrixXd> X,
                         const bool get_val = true,
                         const bool get_score = true,
-                        const bool get_inf = true) {
+                        const bool get_inf = true,
+                        const bool expected = true) {
   // Define dimensions
   const int n = Y.size();
   const int p = X.cols();
   const int r = psi.size();
 
-  // Initialize returns; zeros/NAs are also the infeasible-parameter returns
+  // Initialize returns; zeros are also the infeasible-parameter returns
   double ll = NA_REAL;
   Eigen::VectorXd s_psi = Eigen::VectorXd::Zero(r);
   Eigen::MatrixXd I_psi = Eigen::MatrixXd::Zero(r, r);
   Rcpp::List infeasible = Rcpp::List::create(
     Rcpp::Named("value") = -R_PosInf,
     Rcpp::Named("score") = s_psi,
-    Rcpp::Named("inf_mat") = I_psi,
-    Rcpp::Named("beta") = Eigen::VectorXd::Constant(p, NA_REAL),
-    Rcpp::Named("I_b_chol") = Eigen::MatrixXd::Constant(p, p, NA_REAL));
+    Rcpp::Named("inf_mat") = I_psi);
 
   // Form Sigma = psi_r I_n + sum_j psi_j K_j
   Eigen::MatrixXd Sigma = Eigen::MatrixXd::Zero(n, n);
@@ -687,10 +764,18 @@ Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
     Eigen::MatrixXd P = llt.solve(Eigen::MatrixXd::Identity(n, n));
     P.noalias() -= W * llt_U.solve(W.transpose());
 
+    // u_j = K_j etilde (u_r = etilde) drive the stochastic parts of both
+    // the score and the observed information, so they are formed once
+    Eigen::MatrixXd Ue(n, r);
+    for (int jj = 0; jj < r - 1; jj++) {
+      Ue.col(jj) = K.middleCols(jj * n, n) * etilde;
+    }
+    Ue.col(r - 1) = etilde;
+
     // Score for psi_j: 0.5 (etilde' K_j etilde - tr(P K_j)); P and K_j are
     // symmetric so the trace is an elementwise product sum
     for (int jj = 0; jj < r - 1; jj++) {
-      s_psi(jj) = 0.5 * (etilde.dot(K.middleCols(jj * n, n) * etilde) -
+      s_psi(jj) = 0.5 * (etilde.dot(Ue.col(jj)) -
         P.cwiseProduct(K.middleCols(jj * n, n)).sum());
     }
     s_psi(r - 1) = 0.5 * (etilde.squaredNorm() - P.trace());
@@ -708,15 +793,17 @@ Rcpp::List loglik_res_n(const Eigen::Map<Eigen::MatrixXd> K,
           I_psi(ii, jj) = 0.5 * PK[ii].cwiseProduct(PK[jj].transpose()).sum();
         }
       }
+      if (!expected) {
+        // Observed information: flip the sign of the deterministic block
+        // and add the stochastic terms u_j' P u_k
+        I_psi = -I_psi + Ue.transpose() * (P * Ue);
+      }
       I_psi = I_psi.selfadjointView<Eigen::Upper>();
     }
   }
 
-  Eigen::MatrixXd U_chol = llt_U.matrixU();
   return Rcpp::List::create(
     Rcpp::Named("value") = ll,
     Rcpp::Named("score") = s_psi,
-    Rcpp::Named("inf_mat") = I_psi,
-    Rcpp::Named("beta") = beta_tilde,
-    Rcpp::Named("I_b_chol") = U_chol);
+    Rcpp::Named("inf_mat") = I_psi);
 }

@@ -2,7 +2,7 @@ library(lme4)
 library(Matrix)
 
 # The n-side kernels (loglik_n, loglik_res_n) are validated against the
-# q-side path through loglikelihood(), which is itself checked against lme4
+# q-side path through make_loglik(), which is itself checked against lme4
 # and numerical derivatives in test-cpp.R. The q-side algebra does not
 # require q < n, so the q-side path serves as the oracle also in the
 # crossed q > n design below (kept small so cost is irrelevant).
@@ -29,15 +29,11 @@ make_crossed <- function(n = 30, l1 = 12, l2 = 20, seed = 1) {
 }
 
 # n-side evaluation of the same likelihood; ll_q (helper-paths.R) is the oracle
-ll_n <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
-  K <- reconf:::get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist,
+ll_n <- function(psi, Y, X, Z, Hlist, REML, expected = TRUE) {
+  K <- reconf:::get_precomp(Y = Y, X = X, Z = Z, Hlist = Hlist,
                             method = "n_side")$K
-  if (REML) {
-    reconf:::loglik_res_n(K = K, psi = psi, Y = Y, X = X)
-  } else {
-    e <- as.vector(Y - X %*% b)
-    reconf:::loglik_n(K = K, psi = psi, e = e, X = X, expected = expected)
-  }
+  kernel <- if (REML) reconf:::loglik_res_n else reconf:::loglik_n
+  kernel(K = K, psi = psi, Y = Y, X = X, expected = expected)
 }
 
 # ── Path agreement, grouped design (sleepstudy, q < n) ───────────────────────
@@ -45,15 +41,14 @@ ll_n <- function(psi, Y, X, Z, Hlist, REML, b = NULL, expected = TRUE) {
 test_that("n-side agrees with q-side on sleepstudy (ML, expected and observed)", {
   fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = FALSE)
   psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  b_hat   <- as.vector(getME(fit, "beta"))
   Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
   Hlist <- reconf:::get_Hlist_lmer(fit)
 
   # At the MLE and at a nearby non-stationary point, where the score is nonzero
   for (psi in list(psi_hat, psi_hat * c(1.3, 0.8, 1.1, 0.9))) {
     for (expected in c(TRUE, FALSE)) {
-      out_q <- ll_q(psi, Y, X, Z, Hlist, REML = FALSE, b = b_hat, expected = expected)
-      out_n <- ll_n(psi, Y, X, Z, Hlist, REML = FALSE, b = b_hat, expected = expected)
+      out_q <- ll_q(psi, Y, X, Z, Hlist, REML = FALSE, expected = expected)
+      out_n <- ll_n(psi, Y, X, Z, Hlist, REML = FALSE, expected = expected)
       expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
       expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
       expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
@@ -61,38 +56,21 @@ test_that("n-side agrees with q-side on sleepstudy (ML, expected and observed)",
   }
 })
 
-test_that("n-side agrees with q-side on sleepstudy (REML)", {
+test_that("n-side agrees with q-side on sleepstudy (REML, expected and observed)", {
   fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
   psi_hat <- reconf:::get_psi_hat_lmer(fit)
   Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
   Hlist <- reconf:::get_Hlist_lmer(fit)
 
   for (psi in list(psi_hat, psi_hat * c(1.3, 0.8, 1.1, 0.9))) {
-    out_q <- ll_q(psi, Y, X, Z, Hlist, REML = TRUE)
-    out_n <- ll_n(psi, Y, X, Z, Hlist, REML = TRUE)
-    expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
-    expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    for (expected in c(TRUE, FALSE)) {
+      out_q <- ll_q(psi, Y, X, Z, Hlist, REML = TRUE, expected = expected)
+      out_n <- ll_n(psi, Y, X, Z, Hlist, REML = TRUE, expected = expected)
+      expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
+      expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
+      expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    }
   }
-})
-
-test_that("n-side REML beta and I_b_chol match direct GLS computations", {
-  fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
-  psi_hat <- reconf:::get_psi_hat_lmer(fit)
-  Y <- getME(fit, "y"); X <- getME(fit, "X"); Z <- getME(fit, "Z")
-  Hlist <- reconf:::get_Hlist_lmer(fit)
-  r <- length(psi_hat)
-
-  out_n <- ll_n(psi_hat, Y, X, Z, Hlist, REML = TRUE)
-
-  # Direct dense computation of the GLS quantities
-  Psi <- as.matrix(reconf:::Psi_from_H_cpp(psi_hat[-r], do.call(cbind, Hlist)))
-  Sigma <- as.matrix(Z %*% Psi %*% t(Z)) + psi_hat[r] * diag(length(Y))
-  XtSiX <- crossprod(X, solve(Sigma, X))
-  beta_gls <- solve(XtSiX, crossprod(X, solve(Sigma, Y)))
-  expect_equal(out_n$beta, as.vector(beta_gls), tolerance = 1e-6)
-  expect_equal(crossprod(out_n$I_b_chol), XtSiX, tolerance = 1e-6,
-               ignore_attr = TRUE)
 })
 
 # ── Path agreement, crossed design with q > n ────────────────────────────────
@@ -100,23 +78,26 @@ test_that("n-side REML beta and I_b_chol match direct GLS computations", {
 test_that("n-side agrees with q-side in a crossed design with q > n", {
   d <- make_crossed()
   expect_true(d$q > d$n)
-  b <- c(2, -1)
 
   for (psi in list(d$psi, c(0.4, 1.2, 0.3))) {
     for (expected in c(TRUE, FALSE)) {
-      out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = FALSE, b = b,
+      out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = FALSE,
                     expected = expected)
-      out_n <- ll_n(psi, d$Y, d$X, d$Z, d$Hlist, REML = FALSE, b = b,
+      out_n <- ll_n(psi, d$Y, d$X, d$Z, d$Hlist, REML = FALSE,
                     expected = expected)
       expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
       expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
       expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
     }
-    out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
-    out_n <- ll_n(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE)
-    expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
-    expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    for (expected in c(TRUE, FALSE)) {
+      out_q <- ll_q(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE,
+                    expected = expected)
+      out_n <- ll_n(psi, d$Y, d$X, d$Z, d$Hlist, REML = TRUE,
+                    expected = expected)
+      expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
+      expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
+      expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    }
   }
 })
 
@@ -126,31 +107,32 @@ test_that("n-side derivatives agree with numerical ones (q > n)", {
   skip_on_cran()
   skip_if_not_installed("numDeriv")
   d <- make_crossed()
-  b <- c(2, -1)
   K <- reconf:::get_precomp(Y = d$Y, X = d$X, Z = d$Z, Hlist = d$Hlist,
                             method = "n_side")$K
-  e <- as.vector(d$Y - d$X %*% b)
 
-  # ML: score and observed information against the n-side value
+  # ML, profiled over beta: score and observed information against the
+  # n-side value
   val_ml <- function(psi) {
-    reconf:::loglik_n(K = K, psi = psi, e = e, X = d$X, get_score = FALSE,
+    reconf:::loglik_n(K = K, psi = psi, Y = d$Y, X = d$X, get_score = FALSE,
                       get_inf = FALSE)$value
   }
-  out <- reconf:::loglik_n(K = K, psi = d$psi, e = e, X = d$X, expected = FALSE)
-  p <- ncol(d$X)
-  r <- length(d$psi)
-  expect_equal(numDeriv::grad(val_ml, d$psi),
-               out$score[(p + 1):(p + r)], tolerance = 1e-4)
-  expect_equal(-numDeriv::hessian(val_ml, d$psi),
-               out$inf_mat[(p + 1):(p + r), (p + 1):(p + r)], tolerance = 1e-4)
+  out <- reconf:::loglik_n(K = K, psi = d$psi, Y = d$Y, X = d$X,
+                           expected = FALSE)
+  expect_equal(numDeriv::grad(val_ml, d$psi), out$score, tolerance = 1e-4)
+  expect_equal(-numDeriv::hessian(val_ml, d$psi), out$inf_mat,
+               tolerance = 1e-4)
 
-  # REML: score against the n-side value
+  # REML: score and observed information against the n-side value; the true
+  # psi is not a stationary point, so observed and expected differ
   val_reml <- function(psi) {
     reconf:::loglik_res_n(K = K, psi = psi, Y = d$Y, X = d$X,
                           get_score = FALSE, get_inf = FALSE)$value
   }
-  out_reml <- reconf:::loglik_res_n(K = K, psi = d$psi, Y = d$Y, X = d$X)
+  out_reml <- reconf:::loglik_res_n(K = K, psi = d$psi, Y = d$Y, X = d$X,
+                                    expected = FALSE)
   expect_equal(numDeriv::grad(val_reml, d$psi), out_reml$score,
+               tolerance = 1e-4)
+  expect_equal(-numDeriv::hessian(val_reml, d$psi), out_reml$inf_mat,
                tolerance = 1e-4)
 })
 
@@ -158,7 +140,6 @@ test_that("n-side derivatives agree with numerical ones (q > n)", {
 
 test_that("n-side gate matches q-side feasibility decisions", {
   d <- make_crossed()
-  b <- c(2, -1)
 
   # Infeasible: Sigma indefinite
   psi_bad <- c(-100, 0.5, 0.7)
@@ -190,8 +171,7 @@ test_that("n-side gate matches q-side feasibility decisions", {
   for (psi_r_bad in c(0, -0.1)) {
     out_n <- ll_n(c(1, psi_r_bad), Y2, X2, Z2, Hlist2, REML = TRUE)
     expect_identical(out_n$value, -Inf)
-    out_n_ml <- ll_n(c(1, psi_r_bad), Y2, X2, Z2, Hlist2, REML = FALSE,
-                     b = c(0, 0))
+    out_n_ml <- ll_n(c(1, psi_r_bad), Y2, X2, Z2, Hlist2, REML = FALSE)
     expect_identical(out_n_ml$value, -Inf)
   }
 })
@@ -210,11 +190,12 @@ test_that("get_precomp n_side builds K = [Z H_1 Z' ... Z H_{r-1} Z']", {
   }
 })
 
-# ── Dispatch through loglikelihood() ─────────────────────────────────────────
+# ── Dispatch through make_loglik() ───────────────────────────────────────────
 
-test_that("loglikelihood dispatches on method and precomp tag", {
+test_that("make_loglik dispatches on method and precomp tag", {
   d <- make_crossed()
-  b <- c(2, -1)
+  ll_d <- function(...) reconf:::make_loglik(Y = d$Y, X = d$X, Z = d$Z,
+                                             Hlist = d$Hlist, ...)
 
   # auto keeps the q-side for sparse Z even when q > n (crossed intercepts:
   # Z'Z has O(n) off-diagonals however large q is) and picks the n-side only
@@ -224,7 +205,7 @@ test_that("loglikelihood dispatches on method and precomp tag", {
     "q_side")
   fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy)
   expect_identical(
-    reconf:::get_precomp_lmer(fit, Hlist = reconf:::get_Hlist_lmer(fit))$method,
+    vc_model(fit)$precomp$method,
     "q_side")
   set.seed(4)
   Zd <- methods::as(Matrix::Matrix(matrix(rnorm(20 * 25), 20, 25),
@@ -241,52 +222,34 @@ test_that("loglikelihood dispatches on method and precomp tag", {
                          method = "auto")$method,
     "n_side")
 
-  # Explicit method: paths agree through the wrapper, REML and ML
+  # Explicit method: paths agree, REML and ML
   for (psi in list(d$psi, c(0.4, 1.2, 0.3))) {
-    out_q <- reconf:::loglikelihood(psi = psi, Y = d$Y, X = d$X, Z = d$Z,
-                                    Hlist = d$Hlist, REML = TRUE,
-                                    method = "q_side")
-    out_n <- reconf:::loglikelihood(psi = psi, Y = d$Y, X = d$X, Z = d$Z,
-                                    Hlist = d$Hlist, REML = TRUE,
-                                    method = "n_side")
-    expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
-    expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
-
-    # ML without get_beta exercises the wrapper's stripping of the beta block
-    out_q <- reconf:::loglikelihood(psi = psi, b = b, Y = d$Y, X = d$X,
-                                    Z = d$Z, Hlist = d$Hlist, REML = FALSE,
-                                    get_beta = FALSE, method = "q_side")
-    out_n <- reconf:::loglikelihood(psi = psi, b = b, Y = d$Y, X = d$X,
-                                    Z = d$Z, Hlist = d$Hlist, REML = FALSE,
-                                    get_beta = FALSE, method = "n_side")
-    expect_equal(length(out_n$score), length(psi))
-    expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
-    expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    for (reml in c(TRUE, FALSE)) {
+      out_q <- ll_d(REML = reml, method = "q_side")(psi)
+      out_n <- ll_d(REML = reml, method = "n_side")(psi)
+      expect_equal(length(out_n$score), length(psi))
+      expect_equal(out_n$value, out_q$value, tolerance = 1e-8)
+      expect_equal(out_n$score, out_q$score, tolerance = 1e-6)
+      expect_equal(out_n$inf_mat, out_q$inf_mat, tolerance = 1e-6)
+    }
   }
 
   # A supplied precomp determines the path regardless of method
   pc_n <- reconf:::get_precomp(d$Y, d$X, d$Z, Hlist = d$Hlist,
                                method = "n_side")
-  out_pc <- reconf:::loglikelihood(psi = d$psi, Y = d$Y, X = d$X, Z = d$Z,
-                                   Hlist = d$Hlist, REML = TRUE,
-                                   precomp = pc_n, method = "q_side")
-  out_n <- reconf:::loglikelihood(psi = d$psi, Y = d$Y, X = d$X, Z = d$Z,
-                                  Hlist = d$Hlist, REML = TRUE,
-                                  method = "n_side")
+  out_pc <- ll_d(REML = TRUE, precomp = pc_n, method = "q_side")(d$psi)
+  out_n <- ll_d(REML = TRUE, method = "n_side")(d$psi)
   expect_identical(out_pc, out_n)
 
   # Infeasible parameters keep the q-side return shapes
-  out_bad <- reconf:::loglikelihood(psi = c(-100, 0.5, 0.7), Y = d$Y, X = d$X,
-                                    Z = d$Z, Hlist = d$Hlist, REML = TRUE,
-                                    method = "n_side")
+  out_bad <- ll_d(REML = TRUE, method = "n_side")(c(-100, 0.5, 0.7))
   expect_identical(out_bad$value, -Inf)
   expect_identical(length(out_bad$score), 3L)
 })
 
 # ── End to end with q > n through the lme4 front door ────────────────────────
 
-test_that("score_stat and ci_all_lmer work with q > n on both paths", {
+test_that("score_stat and vc_ci work with q > n on both paths", {
   skip_on_cran()
   # Deterministic crossed design where every level occurs, so lmer keeps all
   # q = 15 + 16 = 31 > n = 30 random effects
@@ -310,20 +273,16 @@ test_that("score_stat and ci_all_lmer work with q > n on both paths", {
   expect_gt(ncol(Z), nrow(Z))
 
   # Same score statistic whichever path computes it
-  pc_q <- reconf:::get_precomp(Y, X, Z, REML = TRUE, Hlist = Hlist,
-                               method = "q_side")
-  pc_n <- reconf:::get_precomp(Y, X, Z, REML = TRUE, Hlist = Hlist,
-                               method = "n_side")
+  ll_q <- reconf:::make_loglik(Y, X, Z, Hlist, REML = TRUE, method = "q_side")
+  ll_n <- reconf:::make_loglik(Y, X, Z, Hlist, REML = TRUE, method = "n_side")
   psi0 <- pmax(psi_hat, 0.1)  # away from the boundary
-  st_q <- reconf:::score_stat(theta = psi0, test_idx = 1, Y = Y, X = X, Z = Z,
-                              Hlist = Hlist, REML = TRUE, precomp = pc_q)
-  st_n <- reconf:::score_stat(theta = psi0, test_idx = 1, Y = Y, X = X, Z = Z,
-                              Hlist = Hlist, REML = TRUE, precomp = pc_n)
+  st_q <- reconf:::score_stat(psi = psi0, test_idx = 1, ll = ll_q)
+  st_n <- reconf:::score_stat(psi = psi0, test_idx = 1, ll = ll_n)
   expect_equal(as.vector(st_n), as.vector(st_q), tolerance = 1e-6)
 
   # Full CI pipeline gives the same interval on both paths
-  ci_q <- ci_all_lmer(fit, test_idx = 1, method = "q_side")
-  ci_n <- ci_all_lmer(fit, test_idx = 1, method = "n_side")
+  ci_q <- vc_ci(fit, parm = 1, method = "q_side")
+  ci_n <- vc_ci(fit, parm = 1, method = "n_side")
   expect_true(is.finite(ci_q[1, "lower"]) && is.finite(ci_q[1, "upper"]))
   expect_lte(ci_q[1, "lower"], ci_q[1, "estimate"])
   expect_gte(ci_q[1, "upper"], ci_q[1, "estimate"])

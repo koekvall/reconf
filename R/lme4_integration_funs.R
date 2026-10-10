@@ -19,7 +19,7 @@
 #' The i-th matrix has 1s in positions determined by the i-th covariance parameter
 #' and 0s elsewhere.
 #'
-#' @keywords internal
+#' @noRd
 get_Hlist_lmer <- function(lmerfit)
 {
   .check_lmerfit(lmerfit)
@@ -69,53 +69,32 @@ get_Hlist_lmer <- function(lmerfit)
   list(Y = Y, X = X, Z = Z)
 }
 
-#' Get precomputed quantities from lme4 fit
-#'
-#' Extracts and computes quantities from an lme4 fit that can be reused in
-#' likelihood calculations to avoid redundant computations. The quantities
-#' computed depend on whether REML or ML estimation is used.
-#'
-#' @param lmerfit An `lmerMod` object from fitting a linear mixed model using
-#'   `lme4::lmer`.
-#' @param REML Logical indicating whether to compute quantities for REML
-#'   (\code{TRUE}) or ML (\code{FALSE}). If \code{NULL} (default), uses the
-#'   estimation method from the fitted model.
-#' @param Hlist Optional list of structure matrices (see
-#'   \code{\link{get_Hlist_lmer}}); when supplied, their concatenation is
-#'   stored in the result so likelihood evaluations do not rebuild it.
-#' @param method Computational path to precompute for; see
-#'   \code{?loglikelihood}. The default \code{"auto"} picks a dense path iff
-#'   \eqn{q \ge n} and \eqn{Z} is dense: the spectral one when \eqn{r = 2}
-#'   and the n-by-n one otherwise.
-#'
-#' @return A list containing precomputed cross-products and related quantities:
-#'   \code{XtX}, \code{XtZ}, \code{ZtZ}, \code{R} (sparse Cholesky factor of
-#'   \code{ZtZ}, or \code{NULL} if singular), for REML also \code{XtY} and
-#'   \code{ZtY}, and \code{H} if \code{Hlist} was supplied. For the n-side
-#'   path, instead the dense matrix \code{K} (see \code{?loglik_n}); for the
-#'   spectral path, the eigenvalues \code{d} and rotated data \code{Yt},
-#'   \code{Xt} (see \code{?loglik_spectral}). Either way the list is tagged
-#'   with \code{method}.
-#'
-#' @keywords internal
-get_precomp_lmer <- function(lmerfit, REML = NULL, Hlist = NULL,
-                             method = c("auto", "q_side", "n_side",
-                                        "spectral")) {
-  .check_lmerfit(lmerfit)
-
-  if(is.null(REML)){
-    # 0 indicates ML, non-zero indicates REML
-    REML <- lme4::getME(lmerfit, "REML") != 0
-  } else {
-    if (!is.logical(REML) || length(REML) != 1) {
-      stop("REML must be a single logical value")
-    }
-  }
-
-  m <- .lmer_matrices(lmerfit)
-
-  get_precomp(Y = m$Y, X = m$X, Z = m$Z, REML = REML, Hlist = Hlist,
+# The vc_model of an lme4 fit, with lme4's estimates and parameter names;
+# the only place the inference functions depend on lme4.
+#' @rdname vc_model
+#' @export
+vc_model.lmerMod <- function(x, method = c("auto", "q_side", "n_side",
+                                           "spectral"), ...) {
+  m  <- .lmer_matrices(x)  # offset and prior weights applied
+  vc <- as.data.frame(lme4::VarCorr(x), order = "lower.tri")
+  .make_setup(Y = m$Y, X = m$X, Z = m$Z, Hlist = get_Hlist_lmer(x),
+              REML = lme4::getME(x, "REML") != 0,
+              psi_hat = get_psi_hat_lmer(x), names = .param_names(vc),
               method = match.arg(method))
+}
+
+# Names for covariance parameters, from the data frame
+# as.data.frame(VarCorr(fit), order = "lower.tri"). They follow lme4's names
+# for standard deviations and correlations (sd_x|g, cor_y.x|g) on the
+# variance scale: var_x|g, cov_y.x|g, and var_Residual for the error
+# variance. The residual row has var1 = var2 = NA, variance rows have
+# var2 = NA, and covariance rows have both variables.
+.param_names <- function(vc, idx = seq_len(nrow(vc))) {
+  vapply(idx, function(i) {
+    if (is.na(vc$var1[i])) return(paste0("var_", vc$grp[i]))
+    if (is.na(vc$var2[i])) return(paste0("var_", vc$var1[i], "|", vc$grp[i]))
+    paste0("cov_", vc$var2[i], ".", vc$var1[i], "|", vc$grp[i])
+  }, character(1))
 }
 
 #' Extract estimated covariance parameters from lme4 fit
@@ -132,295 +111,9 @@ get_precomp_lmer <- function(lmerfit, REML = NULL, Hlist = NULL,
 #'   is the error variance. The vector has length r, where r is the total
 #'   number of covariance parameters.
 #'
-#' @keywords internal
+#' @noRd
 get_psi_hat_lmer <- function(lmerfit)
 {
   .check_lmerfit(lmerfit)
-
-  vcov_vec <- as.data.frame(lme4::VarCorr(lmerfit), order = "lower.tri")$vcov
-
-  if (!is.numeric(vcov_vec) || length(vcov_vec) == 0) {
-    stop("Failed to extract variance components from lmerfit")
-  }
-
-  vcov_vec
+  as.data.frame(lme4::VarCorr(lmerfit), order = "lower.tri")$vcov
 }
-
-#' Score test for linear mixed model fitted with lme4
-#'
-#' Computes a score test statistic for a linear mixed model fitted using lme4::lmer.
-#' This is a convenience wrapper around \code{\link{score_stat}} that extracts the
-#' necessary components from an lmerMod object.
-#'
-#' @param lmerfit An `lmerMod` object from fitting a linear mixed model using
-#'   `lme4::lmer`.
-#' @param theta_null Numeric vector of parameter values under the null hypothesis.
-#'   For REML fits, this should be a vector of length r (covariance parameters only).
-#'   For ML fits, this should be a vector of length p + r (fixed effects followed by
-#'   covariance parameters). If \code{NULL}, defaults to zero random effects and
-#'   unit error variance.
-#' @param test_idx Integer vector specifying which elements of \code{theta_null} to
-#'   test. If \code{NULL}, tests all covariance parameters except error variance
-#'   (i.e., tests for zero random effects).
-#' @param efficient Logical. If \code{TRUE} (default), use efficient information
-#'   that accounts for estimation of nuisance parameters.
-#' @param expected Logical. If \code{TRUE} (default), use expected Fisher information;
-#'   otherwise use observed information.
-#' @param profile Logical. If \code{TRUE} (default), optimize nuisance parameters
-#'   under the null hypothesis before computing the test statistic.
-#' @param known_idx Integer vector or \code{NULL} specifying which elements of
-#'   \code{theta_null} (other than \code{test_idx}) have known values and should
-#'   not be optimized when \code{profile = TRUE}. If \code{NULL}, all parameters
-#'   except \code{test_idx} are treated as nuisance parameters.
-#' @param ... Additional arguments passed to the trust-region optimizer used
-#'   when \code{profile = TRUE}, such as \code{iterlim} (default 1000 here:
-#'   profiling at a distant null can involve many cheap iterations along
-#'   nearly flat directions).
-#'
-#' @return A named numeric vector with elements:
-#'   \item{stat}{The score test statistic}
-#'   \item{p_val}{P-value from chi-squared distribution}
-#'   \item{df}{Degrees of freedom (length of \code{test_idx})}
-#'
-#' @examples
-#' library(lme4)
-#' fit <- lmer(Reaction ~ Days + (1 | Subject), data = sleepstudy)
-#'
-#' # Default: test H0 that the random intercept variance is zero
-#' score_test_lmer(fit)
-#'
-#' # Test only the random intercept variance (index 1), against null value 0
-#' score_test_lmer(fit, test_idx = 1L)
-#'
-#' @export
-score_test_lmer <- function(lmerfit,
-                            theta_null = NULL,
-                            test_idx = NULL,
-                            efficient = TRUE,
-                            expected = TRUE,
-                            profile = TRUE,
-                            known_idx = NULL,
-                            ...)
-{
-  .check_lmerfit(lmerfit)
-
-  # Extract model components (offset and prior weights applied)
-  m <- .lmer_matrices(lmerfit)
-  Y <- m$Y
-  X <- m$X
-  Z <- m$Z
-  Hlist <- get_Hlist_lmer(lmerfit)
-  REML <- lme4::getME(lmerfit, "REML") != 0
-  precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist)
-
-  p <- ncol(X)
-  r <- length(Hlist) + 1
-
-  if(is.null(theta_null)){
-    # Default: zero random effects, unit error variance
-    if(REML){
-      theta_null <- c(rep(0, r - 1), 1)
-    } else {
-      theta_null <- c(lme4::fixef(lmerfit), rep(0, r - 1), 1)
-    }
-  }
-  .check_theta_null(theta_null, REML, p, r)
-
-  psi_r_idx <- if(REML) r else p + r
-  if(theta_null[psi_r_idx] <= 0){
-    stop("Error variance (last element of theta_null) must be positive")
-  }
-
-  test_idx <- .setup_test_idx(test_idx, REML, p, r)
-  k <- length(test_idx)
-
-  # Profile nuisance parameters if requested
-  if(profile){
-    exclude_idx <- c(test_idx, known_idx)
-    opt_idx <- seq_along(theta_null)[-exclude_idx]
-
-    if(length(opt_idx) > 0){
-      # Optimize nuisance parameters. Profiling at a null far from the
-      # estimates can require many cheap iterations along nearly flat
-      # directions (Fisher scoring converges linearly there), so the
-      # default iteration limit is generous.
-      dots <- list(...)
-      if (is.null(dots$iterlim)) dots$iterlim <- 1000L
-      theta_null <- do.call(maximize_loglik,
-                            c(list(start_val = theta_null,
-                                   opt_idx = opt_idx,
-                                   Y = Y,
-                                   X = X,
-                                   Z = Z,
-                                   Hlist = Hlist,
-                                   expected = expected,
-                                   REML = REML,
-                                   precomp = precomp),
-                              dots))$arg
-    }
-  }
-  
-  # Compute score test statistic
-  test_stat <- score_stat(theta = theta_null,
-                          test_idx = test_idx,
-                          Y = Y,
-                          X = X,
-                          Z = Z,
-                          Hlist = Hlist,
-                          REML = REML,
-                          expected = expected,
-                          efficient = efficient,
-                          signed = FALSE,
-                          known_idx = known_idx,
-                          precomp = precomp)
-  
-  # Return results
-  c("stat" = as.numeric(test_stat),
-    "p_val" = stats::pchisq(as.numeric(test_stat), df = k, lower.tail = FALSE),
-    "df" = k)
-}
-
-#' Score tests for all covariance parameters individually
-#'
-#' Performs individual score tests for each covariance parameter in a linear mixed
-#' model fitted with lme4. This function tests each parameter separately while
-#' profiling over all other parameters. The default null value is zero for
-#' every parameter, so variance rows test whether the corresponding random
-#' effect is needed and covariance rows test zero covariance.
-#'
-#' @param lmerfit An `lmerMod` object from fitting a linear mixed model using
-#'   `lme4::lmer`.
-#' @param theta_null Numeric vector of parameter values under the null hypothesis.
-#'   For REML fits, this should be a vector of length r (covariance parameters only).
-#'   For ML fits, this should be a vector of length p + r (fixed effects followed by
-#'   covariance parameters). If \code{NULL} (default), each parameter is tested
-#'   at zero, with the remaining parameters started at their estimates when
-#'   profiling.
-#' @param test_idx Integer vector specifying which covariance parameters to test.
-#'   If \code{NULL}, tests all covariance parameters except error variance.
-#' @param efficient Logical. If \code{TRUE} (default), use efficient information
-#'   that accounts for estimation of nuisance parameters.
-#' @param expected Logical. If \code{TRUE} (default), use expected Fisher information;
-#'   otherwise use observed information.
-#' @param ... Additional arguments passed to \code{\link{score_test_lmer}}.
-#'
-#' @return A matrix of class \code{reconf_test} with one row per tested
-#'   parameter, named as in \code{\link{ci_all_lmer}}, and columns
-#'   \code{statistic} (the score test statistic), \code{df} (degrees of
-#'   freedom, 1 for individual tests), and \code{p.value} (from the
-#'   chi-squared distribution). Supports \code{print} and
-#'   \code{\link[generics]{tidy}}.
-#'
-#' @details
-#' When testing covariance parameters (off-diagonal elements), the function ensures
-#' that the starting values for optimization yield a positive semi-definite covariance
-#' matrix by appropriately adjusting the corresponding variance parameters.
-#'
-#' @examples
-#' \donttest{
-#' library(lme4)
-#' fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy)
-#'
-#' # Test each variance/covariance parameter against zero
-#' score_test_all_lmer(fit)
-#' }
-#' @seealso \code{\link{score_test_lmer}} for joint tests and user-supplied
-#'   null values, \code{\link{ci_all_lmer}} for confidence intervals.
-#' @export
-score_test_all_lmer <- function(lmerfit,
-                          theta_null = NULL,
-                          test_idx = NULL,
-                          efficient = TRUE,
-                          expected = TRUE,
-                          ...)
-{
-  .check_lmerfit(lmerfit)
-
-  # Get model dimensions
-  REML <- lme4::getME(lmerfit, "REML") != 0
-  r_i <- lme4::getME(lmerfit, "m_i")
-  r <- sum(r_i) + 1
-  p <- ncol(lme4::getME(lmerfit, "X"))
-
-  # Set up theta_null. By default each parameter is tested at zero while the
-  # nuisance parameters start from their estimates, which keeps the profiling
-  # well conditioned regardless of the response scale.
-  default_null <- is.null(theta_null)
-  if(default_null){
-    psi_hat <- get_psi_hat_lmer(lmerfit)
-    theta_null <- if(REML) psi_hat else c(as.vector(lme4::fixef(lmerfit)), psi_hat)
-  }
-  .check_theta_null(theta_null, REML, p, r)
-
-  test_idx <- .setup_test_idx(test_idx, REML, p, r)
-  k <- length(test_idx)
-
-  # Get variance/covariance indicator and parameter names
-  vc <- as.data.frame(lme4::VarCorr(lmerfit), order = "lower.tri")
-  is_var_param <- is.na(vc$var2)
-
-  # Used to determine which term a parameter belongs to
-  last_idx <- lme4::getME(lmerfit, "Tp")
-
-  # Prepare output matrix; test_idx indexes theta, psi_idx the psi vector
-  psi_idx <- if (REML) test_idx else test_idx - p
-  out <- matrix(NA, nrow = k, ncol = 3,
-                dimnames = list(.param_names(vc, psi_idx),
-                                c("statistic", "df", "p.value")))
-  
-  # Loop over parameters to test
-  for(i in seq_along(test_idx)){
-    param_idx <- test_idx[i]
-    
-    # Adjust for REML vs ML indexing
-    psi_param_idx <- if(REML) param_idx else param_idx - p
-    
-    # Create starting point for this test; under the default, the tested
-    # parameter's null value is zero
-    theta_start <- theta_null
-    if (default_null) theta_start[param_idx] <- 0
-
-    if (psi_param_idx <= (r - 1)) {
-      # Term bookkeeping. Tp has a leading zero: term t covers parameters
-      # (Tp[t] + 1):Tp[t + 1].
-      term_idx <- max(which(last_idx < psi_param_idx))
-      first_param <- last_idx[term_idx] + 1L
-      dim_i <- as.integer(0.5 * (-1 + sqrt(1 + 8 * r_i[term_idx])))
-      jj <- psi_param_idx - last_idx[term_idx]
-      row_col <- get_row_col_ltri(jj, n = dim_i)
-      shift <- if (REML) 0L else p
-
-      if (!is_var_param[psi_param_idx]) {
-        # Tested parameter is a covariance: ensure the two corresponding
-        # variances give a positive semidefinite starting value
-        var_idx1 <- get_idx_ltri(row = row_col[2], col = row_col[2], n = dim_i)
-        var_idx2 <- get_idx_ltri(row = row_col[1], col = row_col[1], n = dim_i)
-        adj <- shift + first_param + c(var_idx1, var_idx2) - 1
-        theta_start[adj] <- pmax(theta_start[adj], abs(theta_start[param_idx]))
-      } else if (default_null && dim_i > 1) {
-        # Tested parameter is a variance set to zero: also start the
-        # covariances involving the same variable at zero. They are still
-        # profiled; the modified start avoids slow optimization along the
-        # weakly identified covariance direction at zero variance.
-        v <- row_col[1]
-        cov_idx <- vapply(setdiff(seq_len(dim_i), v), function(i)
-          get_idx_ltri(row = max(i, v), col = min(i, v), n = dim_i), numeric(1))
-        theta_start[shift + first_param + cov_idx - 1] <- 0
-      }
-    }
-
-    # Perform score test for this parameter
-    res <- score_test_lmer(lmerfit = lmerfit,
-                           theta_null = theta_start,
-                           test_idx = param_idx,
-                           efficient = efficient,
-                           expected = expected,
-                           profile = TRUE, ...)
-    out[i, ] <- res[c("stat", "df", "p_val")]
-  }
-  structure(out, class = c("reconf_test", class(out)),
-            method = if (REML) "REML" else "ML")
-}
-
-
-

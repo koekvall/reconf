@@ -1,288 +1,130 @@
-#' Confidence interval for a single covariance parameter
-#'
-#' Computes a score-based confidence interval for a single covariance parameter
-#' in a linear mixed model fitted with lme4, by inverting the score test
-#' statistic. The signed score profile is evaluated on a grid and the CI bounds
-#' are located by linear interpolation at the +/- critical value crossings.
-#'
-#' @param lmerfit An \code{lmerMod} object from fitting a linear mixed model
-#'   using \code{lme4::lmer}.
-#' @param test_idx Single positive integer specifying which covariance parameter
-#'   to compute a CI for. Indexes into the vector returned by
-#'   \code{as.data.frame(VarCorr(lmerfit), order = "lower.tri")$vcov}, with
-#'   error variance last.
-#' @param level Numeric confidence level in (0, 1). Default is \code{0.95}.
-#' @param step_size Positive numeric. Step size for the outward search (on the
-#'   parameter scale). If \code{NULL} (default), set automatically to
-#'   \code{SE / 40} where SE is derived from the expected information, giving
-#'   roughly 40 steps per Wald CI half-width.
-#' @param num_points Positive integer. Maximum number of steps in each
-#'   direction. Default is 500. Increase if the CI bound is not found.
-#' @param REML Logical or \code{NULL}. If \code{NULL} (default), the estimation
-#'   method is taken from \code{lmerfit}.
-#' @param expected Logical. If \code{TRUE} (default), use expected Fisher
-#'   information.
-#' @param known_idx Integer vector or \code{NULL}. Covariance parameters to
-#'   treat as fixed (known) when profiling over nuisance parameters.
-#' @param onestep Logical. If \code{FALSE} (default), nuisance parameters are
-#'   fully optimized at each outward step using the trust-region algorithm. If
-#'   \code{TRUE}, a single Newton step is taken from the warm-start instead.
-#'   The one-step update is a trust-region solve with \code{iterlim = 1L} and
-#'   a large radius, so the Newton step is unconstrained. Asymptotically
-#'   equivalent to full profiling but substantially cheaper.
-#' @param nonneg Logical. If \code{TRUE} (default), report for a variance
-#'   parameter (including the residual variance) the intersection of the
-#'   search interval with the nonnegative half-line. Usually this truncates
-#'   the lower bound at 0. If no nonnegative value lies in the interval,
-#'   both bounds are \code{NA} with a warning; see \code{statistic}.
-#'   Covariance parameters are unaffected: any real value is feasible for
-#'   some choice of nuisance parameters. Set \code{FALSE} for diagnostic
-#'   purposes.
-#' @param accelerate Logical. If \code{TRUE} (default), the outward search
-#'   chooses each step by a secant prediction of the critical-value crossing,
-#'   capped at twice the previous accepted step, and refines the bracketing
-#'   interval by regula falsi to the resolution of the fixed-step search;
-#'   nuisance warm starts are extrapolated along the accepted path. Typically
-#'   needs 5--10 times fewer profile evaluations per bound. If \code{FALSE},
-#'   every step has length \code{step_size} (the fixed-step search).
-#' @param statistic Character, either \code{"score"} (default) or
-#'   \code{"rlrt"}. With \code{"score"} the interval inverts the signed score
-#'   statistic standardized by the expected information. With \code{"rlrt"}
-#'   it inverts the profile restricted likelihood ratio statistic on the
-#'   extended parameter set (see Details); nuisance parameters and the
-#'   reference maximum are taken over that set. For a variance whose
-#'   extended-set estimate is negative, the interval is centered below zero.
-#'   It can then exclude the reported estimate or contain no nonnegative
-#'   values; warnings flag both cases, and \code{nonneg = TRUE} reports the
-#'   second as \code{NA} bounds. An interval with no nonnegative values has
-#'   probability about \eqn{\alpha/2} when the true variance is zero;
-#'   recurrence suggests an inadequate covariance structure. The
-#'   \code{"rlrt"} intervals have no supporting theory at present and are
-#'   provided for comparison with the score intervals. \code{lme4::profile}
-#'   profiles the unrestricted likelihood even for a restricted fit, so it
-#'   does not compute this statistic. Requires \code{onestep = FALSE}: the
-#'   likelihood ratio needs fully profiled nuisance parameters.
-#' @param method Likelihood computation path, one of \code{"auto"} (default),
-#'   \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see
-#'   \code{\link{loglikelihood}}.
-#' @param ... Additional arguments passed to the trust-region optimizer.
-#'
-#' @return A one-row matrix of class \code{reconf_ci} with columns
-#'   \code{estimate}, \code{lower}, and \code{upper}, named by the parameter.
-#'   Supports \code{print} and \code{\link[generics]{tidy}}.
-#'
-#' @details
-#' The confidence interval at level \eqn{1 - \alpha} is
-#' \deqn{\{\psi^{(1)} : |T_n(\psi^{(1)})| \leq z_{1-\alpha/2}\},}
-#' where \eqn{T_n} is the signed statistic and \eqn{z_{1-\alpha/2}} the
-#' standard normal quantile.
-#'
-#' Both statistics are defined on the extended parameter set: all covariance
-#' parameter values, negative variances included, for which the marginal
-#' covariance matrix of the response is positive definite. A variance
-#' estimated at zero lies on the boundary of the usual parameter space but
-#' in the interior of the extended set, where standard asymptotics apply.
-#'
-#' The signed score statistic is evaluated along an outward search from the
-#' MLE, with nuisance parameters optimized at each step from the previous
-#' step's solution (see \code{accelerate}). The CI bound is located where the
-#' statistic crosses \eqn{\pm z_{1-\alpha/2}}. Increase \code{num_points} or
-#' \code{step_size} if a warning is issued about the statistic not crossing
-#' the critical value. The statistic is also evaluated at the search origin.
-#' If it exceeds the critical value there, which can happen when the
-#' estimate is on the boundary, the confidence set does not contain the
-#' estimate; the search warns and restarts from the extended-set maximizer,
-#' where the profile statistic vanishes. An interval lying entirely below
-#' zero is handled as described under \code{nonneg}.
-#'
-#' Prior weights and offsets in the \code{lmer} fit are supported: the model
-#' is transformed to unit error variance by scaling \code{Y}, \code{X}, and
-#' \code{Z} with the square-root weights (after subtracting the offset),
-#' which leaves all covariance parameters and their inference unchanged. As
-#' in \code{lme4}, \code{psi[r]} is then the unit error variance, and
-#' observation \eqn{i} has error variance \eqn{\psi_r / w_i}.
-#'
-#' @seealso \code{\link{ci_all_lmer}}
-#'
-#' @examples
-#' \donttest{
-#' library(lme4)
-#' fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy)
-#'
-#' # 95% CI for the random intercept variance (parameter 1)
-#' ci_lmer(fit, test_idx = 1)
-#'
-#' # 95% CI for the random slope variance (parameter 3)
-#' ci_lmer(fit, test_idx = 3)
-#' }
-#' @export
-ci_lmer <- function(lmerfit, test_idx, level = 0.95, step_size = NULL,
-                    num_points = 500L, REML = NULL, expected = TRUE,
-                    known_idx = NULL,
-                    onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
-                    statistic = c("score", "rlrt"),
-                    method = c("auto", "q_side", "n_side", "spectral"), ...) {
-
-  setup <- .ci_setup(lmerfit, REML, method = match.arg(method))
-  ci <- .ci_lmer_core(setup, test_idx = test_idx, level = level,
-                      step_size = step_size, num_points = num_points,
-                      expected = expected, known_idx = known_idx,
-                      onestep = onestep, statistic = match.arg(statistic),
-                      nonneg = nonneg, accelerate = accelerate, ...)
-  .as_reconf_ci(ci, level = level, REML = setup$REML)
-}
-
-
 #' Confidence intervals for covariance parameters
 #'
-#' Computes score-based confidence intervals for each covariance parameter in a
-#' linear mixed model fitted with lme4. Model components are extracted and
-#' precomputed once and shared across parameters.
+#' Computes confidence intervals for covariance parameters of a linear mixed
+#' model by inverting a signed score or likelihood ratio statistic. See the
+#' references for the theory.
 #'
-#' @param lmerfit An \code{lmerMod} object from fitting a linear mixed model
-#'   using \code{lme4::lmer}.
-#' @param test_idx Integer vector specifying which parameters to compute CIs for.
-#'   If \code{NULL} (default), CIs are computed for all covariance parameters,
-#'   including the error variance.
-#' @param level Numeric confidence level in (0, 1). Default is \code{0.95}.
-#' @param onestep Logical. If \code{TRUE}, use a single Newton step for the
-#'   nuisance-parameter update at each outward step instead of full
-#'   optimization. See \code{\link{ci_lmer}}. Default is \code{FALSE}.
-#' @param nonneg Logical. If \code{TRUE} (default), clamp the lower CI bound
-#'   at 0 for variance parameters; see \code{\link{ci_lmer}}.
-#' @param accelerate Logical. If \code{TRUE} (default), use secant-accelerated
-#'   steps in the outward search; see \code{\link{ci_lmer}}.
-#' @param statistic Character, either \code{"score"} (default) or
-#'   \code{"rlrt"}, selecting which statistic is inverted; see
-#'   \code{\link{ci_lmer}}. The reference maximum needed by \code{"rlrt"} is
-#'   computed once and shared across parameters.
-#' @param method Likelihood computation path, one of \code{"auto"} (default),
-#'   \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}; see
-#'   \code{\link{loglikelihood}}.
-#' @param ... Additional arguments passed to \code{\link{ci_lmer}}.
+#' @param object a fitted linear mixed model, currently of class
+#'   \code{lmerMod} from \code{lme4::lmer}, or a \code{\link{vc_model}}.
+#' @param parm parameters, as names (see Value) or as indices in the order
+#'   of \code{\link{vc_model}}, which for an lme4 fit is that of
+#'   \code{as.data.frame(VarCorr(fit), order = "lower.tri")}, with the error
+#'   variance last. If \code{NULL}, all covariance parameters.
+#' @param level confidence level.
+#' @param statistic \code{"score"} for the signed score statistic,
+#'   standardized by the efficient information, or \code{"rlrt"} for the
+#'   signed root of the profile likelihood ratio statistic, which for a
+#'   restricted likelihood fit is the restricted likelihood ratio. See
+#'   Details.
+#' @param expected if \code{TRUE} use the expected information, otherwise the
+#'   observed information, both in the statistic and in the maximization over
+#'   nuisance parameters.
+#' @param known parameters, as for \code{parm}, held fixed at their estimates
+#'   instead of being treated as nuisance parameters.
+#' @param nonneg if \code{TRUE}, the interval for a variance, the error
+#'   variance included, is intersected with \eqn{[0, \infty)}. An empty
+#'   intersection gives \code{NA} bounds and a warning.
+#' @param onestep if \code{TRUE}, the nuisance parameters at each step are
+#'   updated by one iteration of the optimizer, with unbounded trust region,
+#'   from those at the previous step instead of maximized. Requires
+#'   \code{statistic = "score"}.
+#' @param step_size initial step length of the search (see Details), on the
+#'   scale of the parameter. If \code{NULL}, one fortieth of the standard
+#'   error from the expected information at the estimate.
+#' @param num_points maximum number of steps in each direction. The search
+#'   also stops at distance \code{num_points * step_size} from its origin.
+#' @param method computational method for the likelihood: \code{"auto"},
+#'   \code{"q_side"}, \code{"n_side"}, or \code{"spectral"}. See Details.
+#'   A \code{vc_model} carries the method it was built with.
+#' @param ... arguments passed to the optimizer \code{\link[trust]{trust}},
+#'   such as \code{iterlim}.
 #'
-#' @return A matrix of class \code{reconf_ci} with one row per parameter and
-#'   columns \code{estimate}, \code{lower}, and \code{upper}. Row names are of
-#'   the form \code{"var | grouping_factor"} or
-#'   \code{"var1:var2 | grouping_factor"} for covariance parameters. Supports
-#'   \code{print} and \code{\link[generics]{tidy}}.
+#' @return A matrix of class \code{vc_ci} with one row per parameter and
+#'   columns \code{estimate}, \code{lower}, and \code{upper}. For an lme4
+#'   fit the estimates are those of lme4, and rows are named
+#'   \code{"var_x|g"} for the variance of the random effect \code{x} with
+#'   grouping factor \code{g}, \code{"cov_y.x|g"} for the covariance of
+#'   \code{x} and \code{y}, and \code{"var_Residual"} for the error
+#'   variance, following the names \code{lme4} uses for standard deviations
+#'   and correlations.
 #'
-#' @seealso \code{\link{ci_lmer}}
+#' @details
+#' The interval at level \eqn{1 - \alpha} for a parameter \eqn{\psi_j} is
+#' \deqn{\{\psi_j : |T(\psi_j)| \leq z_{1-\alpha/2}\},}
+#' where \eqn{T} is the signed statistic with the other parameters profiled
+#' out and \eqn{z_{1-\alpha/2}} is the standard normal quantile. The
+#' parameter set is the set of covariance parameters for which the covariance
+#' matrix of the response is positive definite. It includes negative
+#' variances, and the nuisance parameters are maximized over it.
+#'
+#' The bounds are found by a search outward from the estimate in each
+#' direction, with the nuisance parameters at each step computed from those
+#' at the previous step. Step lengths are chosen by secant extrapolation of
+#' the statistic, each at most twice the previous one. If the covariance
+#' matrix of the response is not positive definite at the start of a step,
+#' the step is halved, up to 20 times, after which a starting point is
+#' constructed as in \code{\link{vc_test}}. A bound is where the
+#' statistic crosses \eqn{\pm z_{1-\alpha/2}}, located to within
+#' \code{step_size}. If there is no crossing within the search distance, the
+#' bound is \code{-Inf} or \code{Inf} and a warning is issued. If the
+#' statistic at the estimate exceeds the critical value, the search starts
+#' instead from the maximizer over the parameter set, with a warning.
+#'
+#' With \code{statistic = "rlrt"}, the search starts from the maximizer over
+#' the parameter set. A warning is issued if that maximizer has a negative
+#' variance; the interval for that variance can then lie entirely below zero.
+#'
+#' The likelihood is computed by one of three methods. \code{"q_side"} uses
+#' sparse \eqn{q \times q} matrices, where \eqn{q} is the number of random
+#' effects. \code{"n_side"} uses dense \eqn{n \times n} matrices. For models
+#' with one random-effect variance, \code{"spectral"} uses one
+#' eigendecomposition and \eqn{O(n)} operations per evaluation.
+#' \code{"auto"} uses \code{"spectral"} or \code{"n_side"} if
+#' \eqn{q \geq n} and more than 10 percent of the entries of the
+#' random-effects design matrix are nonzero, and \code{"q_side"} otherwise.
+#'
+#' @references Shedden, M. and Ekvall, K. O. (2026). Score-based confidence
+#'   intervals for variance-covariance parameters in linear mixed models.
+#'   arXiv:2610.04181.
+#'
+#' @seealso \code{\link{vc_model}}, \code{\link{vc_test}}
 #'
 #' @examples
-#' \donttest{
 #' library(lme4)
 #' fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy)
 #'
-#' # 95% CIs for all random-effect variance/covariance parameters
-#' ci_all_lmer(fit)
-#' }
+#' # 95% intervals for all covariance parameters
+#' vc_ci(fit)
+#'
+#' # The random slope variance, by name or by index
+#' vc_ci(fit, parm = "var_Days|Subject")
+#' vc_ci(fit, parm = 3)
 #' @export
-ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
-                        onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
-                        statistic = c("score", "rlrt"),
-                        method = c("auto", "q_side", "n_side", "spectral"), ...) {
+vc_ci <- function(object, parm = NULL, level = 0.95,
+                  statistic = c("score", "rlrt"), expected = TRUE,
+                  known = NULL, nonneg = TRUE, onestep = FALSE,
+                  step_size = NULL, num_points = 500L,
+                  method = c("auto", "q_side", "n_side", "spectral"), ...) {
   statistic <- match.arg(statistic)
-  dots <- list(...)
-  REML <- if (is.null(dots$REML)) NULL else dots$REML
-  dots$REML <- NULL
+  setup <- .as_vc_model(object, match.arg(method), !missing(method))
+  parm  <- .parm_index(parm, setup$names, "parm")
+  if (is.null(parm)) parm <- seq_len(setup$r)
+  known <- .parm_index(known, setup$names, "known")
 
-  setup <- .ci_setup(lmerfit, REML, method = match.arg(method))
-
-  if (is.null(test_idx)) test_idx <- seq_len(setup$r)  # All covariance parameters
-
-  # The rlrt reference maximum does not depend on the tested parameter, so
-  # compute it once here and share it across parameters. Arguments in dots
-  # not matching a formal of .ci_lmer_core are optimizer arguments and are
-  # forwarded; unknown names are rejected as in .ci_lmer_core.
-  rlrt_ref <- NULL
-  if (statistic == "rlrt") {
-    known_idx_ <- if (!setup$REML && setup$p > 0 && !is.null(dots$known_idx))
-      setup$p + dots$known_idx else dots$known_idx
-    expected_  <- if (is.null(dots$expected)) TRUE else dots$expected
-    opt_dots   <- dots[setdiff(names(dots), names(formals(.ci_lmer_core)))]
-    bad_dots   <- setdiff(names(opt_dots),
-                          c(names(formals(trust::trust)),
-                            names(formals(maximize_loglik))))
-    if (length(bad_dots) > 0) {
-      stop("unused argument(s): ", paste(bad_dots, collapse = ", "))
-    }
-    rlrt_ref <- do.call(.rlrt_reference,
-                        c(list(setup = setup, known_idx = known_idx_,
-                               expected = expected_), opt_dots))
+  if (!(is.numeric(level) && length(level) == 1L && level > 0 && level < 1)) {
+    stop("level must be a single number in (0, 1)")
   }
-
-  ci <- do.call(rbind, lapply(test_idx, function(i) {
-    do.call(.ci_lmer_core,
-            c(list(setup = setup, test_idx = i, level = level,
-                   onestep = onestep, nonneg = nonneg,
-                   statistic = statistic, rlrt_ref = rlrt_ref,
-                   accelerate = accelerate), dots))
-  }))
-  .as_reconf_ci(ci, level = level, REML = setup$REML)
-}
-
-
-# Internal helpers ---------------------------------------------------------
-
-# Extract and precompute everything ci_lmer needs from an lmer fit, so that
-# ci_all_lmer pays the extraction cost once rather than once per parameter.
-# method selects the likelihood path (see ?loglikelihood); the precomp built
-# here carries the choice to every downstream likelihood evaluation.
-.ci_setup <- function(lmerfit, REML = NULL, method = "auto") {
-  .check_lmerfit(lmerfit)
-  if (is.null(REML)) REML <- lme4::getME(lmerfit, "REML") != 0
-
-  m       <- .lmer_matrices(lmerfit)  # offset and prior weights applied
-  Y       <- m$Y
-  X       <- m$X
-  Z       <- m$Z
-  Hlist   <- get_Hlist_lmer(lmerfit)
-  precomp <- get_precomp(Y = Y, X = X, Z = Z, REML = REML, Hlist = Hlist,
-                         method = method)
-  psi_hat <- get_psi_hat_lmer(lmerfit)
-  p       <- ncol(X)
-
-  # For ML fits with fixed effects, the full parameter vector is c(beta, psi)
-  # and covariance-parameter indices must be shifted by p.
-  b_hat     <- if (!REML && p > 0) as.vector(lme4::fixef(lmerfit)) else NULL
-  theta_hat <- c(b_hat, psi_hat)
-
-  list(Y = Y, X = X, Z = Z, Hlist = Hlist, REML = REML, precomp = precomp,
-       psi_hat = psi_hat, b_hat = b_hat, theta_hat = theta_hat,
-       r = length(psi_hat), p = p,
-       vc = as.data.frame(lme4::VarCorr(lmerfit), order = "lower.tri"))
-}
-
-# Compute the CI for one parameter given a prebuilt setup; see ci_lmer.
-.ci_lmer_core <- function(setup, test_idx, level = 0.95, step_size = NULL,
-                          num_points = 500L, expected = TRUE,
-                          known_idx = NULL,
-                          onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
-                          statistic = c("score", "rlrt"), rlrt_ref = NULL,
-                          ...) {
-
-  assertthat::assert_that(
-    is.numeric(test_idx), length(test_idx) == 1L,
-    test_idx == floor(test_idx), test_idx >= 1L,
-    msg = "test_idx must be a single positive integer"
-  )
-  assertthat::assert_that(
-    is.numeric(level), length(level) == 1L, level > 0, level < 1,
-    msg = "level must be a single number in (0, 1)"
-  )
-  assertthat::assert_that(
-    is.numeric(num_points), length(num_points) == 1L, num_points >= 2L,
-    msg = "num_points must be a single integer >= 2"
-  )
-  assertthat::assert_that(
-    test_idx <= setup$r,
-    msg = paste0("test_idx must not exceed the number of covariance parameters (",
-                 setup$r, ")")
-  )
-  # Arguments in ... are forwarded to the trust-region optimizer. An unknown
-  # name must be rejected here: inside the search it would error at every
-  # evaluation, and those errors are swallowed as infeasible points.
+  if (!(is.numeric(num_points) && length(num_points) == 1L &&
+        num_points >= 2)) {
+    stop("num_points must be a single integer >= 2")
+  }
+  if (statistic == "rlrt" && onestep) {
+    stop("onestep = TRUE is not available with statistic = 'rlrt': ",
+         "the likelihood ratio requires fully profiled nuisance parameters")
+  }
+  # Arguments in ... go to the optimizer. An unknown name must be rejected
+  # here: inside the search it would error at every evaluation, and those
+  # errors are taken as infeasible points.
   bad_dots <- setdiff(names(list(...)),
                       c(names(formals(trust::trust)),
                         names(formals(maximize_loglik))))
@@ -290,32 +132,47 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
     stop("unused argument(s): ", paste(bad_dots, collapse = ", "))
   }
 
-  statistic <- match.arg(statistic)
-  if (statistic == "rlrt" && onestep) {
-    stop("onestep = TRUE is not available with statistic = 'rlrt': ",
-         "the likelihood ratio requires fully profiled nuisance parameters")
+  # The rlrt reference maximum does not depend on the parameter, so compute
+  # it once and share it across parameters
+  rlrt_ref <- if (statistic == "rlrt") {
+    .rlrt_reference(setup, known, expected, ...)
   }
 
-  REML <- setup$REML
-  p    <- setup$p
-  if (!REML && p > 0) {
-    test_idx_  <- p + test_idx
-    known_idx_ <- if (is.null(known_idx)) NULL else p + known_idx
-  } else {
-    test_idx_  <- test_idx
-    known_idx_ <- known_idx
-  }
+  ci <- do.call(rbind, lapply(parm, function(j) {
+    .ci_lmer_core(setup, test_idx = j, level = level, step_size = step_size,
+                  num_points = num_points, expected = expected,
+                  known_idx = known, onestep = onestep, nonneg = nonneg,
+                  statistic = statistic, rlrt_ref = rlrt_ref, ...)
+  }))
+  .as_vc_ci(ci, level = level, REML = setup$REML, statistic = statistic)
+}
+
+
+# Internal helpers ---------------------------------------------------------
+
+# Compute the CI for one parameter given a prebuilt setup; see vc_ci,
+# which validates the arguments. test_idx and known_idx index the covariance
+# parameters. accelerate = FALSE gives the fixed-step search, every step of
+# length step_size, which the tests compare against.
+.ci_lmer_core <- function(setup, test_idx, level = 0.95, step_size = NULL,
+                          num_points = 500L, expected = TRUE,
+                          known_idx = NULL,
+                          onestep = FALSE, nonneg = TRUE, accelerate = TRUE,
+                          statistic = c("score", "rlrt"), rlrt_ref = NULL,
+                          ...) {
+
+  statistic <- match.arg(statistic)
 
   # The rlrt reference maximum is taken over the same extended set on which
   # the nuisance parameters are maximized; a smaller reference would let
   # the profile exceed it. The search starts at the maximizer, where the
   # statistic is zero. The reference does not depend on the tested
-  # parameter; ci_all_lmer precomputes it and passes rlrt_ref.
-  theta_origin <- setup$theta_hat
+  # parameter; vc_ci precomputes it and passes rlrt_ref.
+  theta_origin <- setup$psi_hat
   ll_max <- NULL
   if (statistic == "rlrt") {
     if (is.null(rlrt_ref)) {
-      rlrt_ref <- .rlrt_reference(setup, known_idx_, expected, ...)
+      rlrt_ref <- .rlrt_reference(setup, known_idx, expected, ...)
     }
     theta_origin <- rlrt_ref$arg
     ll_max <- rlrt_ref$value
@@ -324,16 +181,10 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
   # Determine step size from expected information if not provided.
   # Use SE/40 so roughly 40 steps cover one Wald CI half-width on each side.
   if (is.null(step_size)) {
-    ll <- loglikelihood(psi = setup$psi_hat, b = setup$b_hat, Y = setup$Y,
-                        X = setup$X, Z = setup$Z,
-                        Hlist = setup$Hlist, REML = REML,
-                        get_val = FALSE, get_score = FALSE, get_inf = TRUE,
-                        get_beta = (!REML && p > 0),
-                        expected = TRUE, precomp = setup$precomp,
-                        check = FALSE)
+    ll <- setup$ll(setup$psi_hat, get_val = FALSE, get_score = FALSE)
     se_approx <- tryCatch(
-      sqrt(solve(ll$inf_mat)[test_idx_, test_idx_]),
-      error = function(e) sqrt(1 / ll$inf_mat[test_idx_, test_idx_])
+      sqrt(solve(ll$inf_mat)[test_idx, test_idx]),
+      error = function(e) sqrt(1 / ll$inf_mat[test_idx, test_idx])
     )
     step_size <- se_approx / 40
   }
@@ -342,7 +193,7 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
 
   # Optimizer arguments shared by every profile evaluation. The one-step
   # Newton update is a trust-region solve with iterlim = 1 and a radius
-  # large enough that the Newton step is unconstrained; see ci_lmer.
+  # large enough that the Newton step is unconstrained; see vc_ci.
   dots <- list(...)
   if (onestep) {
     dots[c("iterlim", "rinit", "rmax", "warn_nonconv")] <- NULL
@@ -351,17 +202,22 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
   } else {
     opt_args <- dots
   }
-  opt_idx <- seq_along(setup$theta_hat)[-unique(c(test_idx_, known_idx_))]
+  opt_idx <- seq_along(setup$psi_hat)[-unique(c(test_idx, known_idx))]
+
+  # Everything the profile evaluations and the outward search need that is
+  # fixed for this parameter
+  ctx <- list(setup = setup, test_idx = test_idx, known_idx = known_idx,
+              opt_idx = opt_idx, statistic = statistic, ll_max = ll_max,
+              expected = expected, opt_args = opt_args, z_crit = z_crit,
+              step_size = step_size, max_steps = as.integer(num_points),
+              accelerate = accelerate)
 
   # Evaluate the signed statistic at the search origin. It vanishes at an
   # interior maximizer but not at a boundary estimate, and an assumed zero
   # can produce a spurious sign change in the first step. If the evaluation
   # fails, fall back to zero. Both search directions share the result.
   .origin_eval <- function() {
-    ev <- .profile_stat(theta_origin, test_idx_, opt_idx, known_idx_,
-                        statistic, ll_max, theta_origin[test_idx_],
-                        opt_args, setup$Y, setup$X, setup$Z, setup$Hlist,
-                        REML, expected, setup$precomp, p)
+    ev <- .profile_stat(theta_origin, theta_origin[test_idx], ctx)
     if (is.null(ev)) ev <- list(theta = theta_origin, stat = 0)
     ev
   }
@@ -375,10 +231,9 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
   if (statistic == "score" && abs(origin_eval$stat) > z_crit) {
     warning("The signed score statistic at the estimate is ",
             format(origin_eval$stat, digits = 3), ", beyond the critical ",
-            "value: the confidence set does not contain the estimate. ",
-            "Searching from the extended-set maximizer instead.")
+            "value; searching from the extended-set maximizer instead.")
     if (is.null(rlrt_ref)) {
-      rlrt_ref <- .rlrt_reference(setup, known_idx_, expected, ...)
+      rlrt_ref <- .rlrt_reference(setup, known_idx, expected, ...)
     }
     theta_origin <- rlrt_ref$arg
     origin_eval <- .origin_eval()
@@ -387,10 +242,9 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
   # Identify whether the test parameter is a variance (nonnegative) or a
   # covariance (unconstrained). For variance rows VarCorr reports var2 as NA;
   # this includes the residual variance row (where var1 is also NA).
-  vc <- setup$vc
-  is_variance <- is.na(vc$var2[test_idx])
+  is_variance <- setup$structure$is_var[test_idx]
   clamp0 <- nonneg && is_variance
-  origin_val <- theta_origin[test_idx_]
+  origin_val <- theta_origin[test_idx]
 
   # The nonneg clamp is the intersection of the search interval with
   # [0, Inf). When the origin is nonnegative, the lower search takes the
@@ -401,47 +255,24 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
   # would return a lower bound above the upper bound.
   lower_clamp <- if (clamp0 && origin_val >= 0) 0 else -Inf
 
-  upper <- .outward_bound(
-    theta_origin, test_idx_, z_crit, direction =  1L,
-    step_size = step_size, max_steps = as.integer(num_points),
-    Y = setup$Y, X = setup$X, Z = setup$Z, Hlist = setup$Hlist,
-    REML = REML, expected = expected, known_idx = known_idx_,
-    precomp = setup$precomp, p = p, opt_args = opt_args,
-    accelerate = accelerate, statistic = statistic, ll_max = ll_max,
-    origin_eval = origin_eval
-  )
+  upper <- .outward_bound(ctx, origin_eval, direction = 1L)
   lower <- if (clamp0 && origin_val < 0) {
     if (!is.na(upper) && upper >= 0) 0 else NA_real_
   } else {
-    .outward_bound(
-      theta_origin, test_idx_, z_crit, direction = -1L,
-      step_size = step_size, max_steps = as.integer(num_points),
-      Y = setup$Y, X = setup$X, Z = setup$Z, Hlist = setup$Hlist,
-      REML = REML, expected = expected, known_idx = known_idx_,
-      precomp = setup$precomp, p = p, opt_args = opt_args,
-      lower_clamp = lower_clamp, accelerate = accelerate,
-      statistic = statistic, ll_max = ll_max, origin_eval = origin_eval
-    )
+    .outward_bound(ctx, origin_eval, direction = -1L,
+                   lower_clamp = lower_clamp)
   }
 
-  # Diagnostics for a variance whose extended-set estimate is negative. An
-  # interval with no nonnegative values has probability about
-  # (1 - level) / 2 when the true variance is zero; recurrence suggests an
-  # inadequate covariance structure.
+  # Diagnostics for a variance whose extended-set estimate is negative
   if (is_variance && is.finite(upper) && upper < 0) {
-    warning("The ", statistic, " interval for '", .param_names(vc, test_idx),
+    warning("The ", statistic, " interval for '", setup$names[test_idx],
             "' contains no nonnegative values (upper bound ",
             format(upper, digits = 3), ").",
-            if (clamp0) " Reporting NA bounds." else "",
-            " This occurs with probability about ",
-            format((1 - level) / 2, digits = 2),
-            " when the true variance is zero, and may indicate an ",
-            "inadequate covariance structure if it recurs.")
+            if (clamp0) " Reporting NA bounds." else "")
     if (clamp0) upper <- NA_real_
   } else if (is_variance && origin_val < 0) {
-    warning("The extended-set estimate of '", .param_names(vc, test_idx),
-            "' is negative (", format(origin_val, digits = 3), "); the ",
-            statistic, " interval is centered below zero.",
+    warning("The extended-set estimate of '", setup$names[test_idx],
+            "' is negative (", format(origin_val, digits = 3), ").",
             if (clamp0) " The lower bound is truncated at 0." else "")
   }
 
@@ -451,88 +282,119 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
   }
 
   matrix(c(setup$psi_hat[test_idx], lower, upper), nrow = 1L,
-         dimnames = list(.param_names(vc, test_idx),
+         dimnames = list(setup$names[test_idx],
                          c("estimate", "lower", "upper")))
 }
 
-# Attach the class and display attributes shared by ci_lmer and ci_all_lmer
-.as_reconf_ci <- function(ci, level, REML) {
-  structure(ci, class = c("reconf_ci", class(ci)),
-            level = level, method = if (REML) "REML" else "ML")
+# Attach the class and display attributes of vc_ci output
+.as_vc_ci <- function(ci, level, REML, statistic) {
+  structure(ci, class = c("vc_ci", class(ci)), level = level,
+            statistic = statistic, method = if (REML) "REML" else "ML")
 }
 
 # Maximize the (restricted) log-likelihood over the extended parameter set,
-# free in every parameter except those in known_idx (already shifted for ML
-# fixed effects). Returns the maximize_loglik list; arg and value are the
+# free in every parameter except those in known_idx. Returns the maximize_loglik list; arg and value are the
 # reference maximizer and maximum for the rlrt statistic. Not wrapped in
 # tryCatch: without a reference no interval exists, so an optimizer error
 # propagates.
 .rlrt_reference <- function(setup, known_idx, expected = TRUE, ...) {
-  free_idx <- seq_along(setup$theta_hat)
+  free_idx <- seq_len(setup$r)
   if (length(known_idx) > 0L) free_idx <- setdiff(free_idx, known_idx)
   do.call(maximize_loglik,
-          c(list(start_val = setup$theta_hat, opt_idx = free_idx,
-                 Y = setup$Y, X = setup$X, Z = setup$Z,
-                 Hlist = setup$Hlist, expected = expected,
-                 REML = setup$REML, precomp = setup$precomp,
-                 check = FALSE),
+          c(list(start_val = setup$psi_hat, opt_idx = free_idx,
+                 ll = setup$ll, expected = expected, check = FALSE),
             list(...)))
 }
 
-# Log-likelihood value at a full parameter vector; -Inf if the evaluation
-# fails (infeasible psi). For ML with fixed effects the first p elements of
-# theta are beta.
-.ll_value <- function(theta, Y, X, Z, Hlist, REML, precomp, p) {
-  b_   <- if (!REML && p > 0L) theta[seq_len(p)] else NULL
-  psi_ <- if (!REML && p > 0L) theta[-seq_len(p)] else theta
-  tryCatch(
-    loglikelihood(psi = psi_, b = b_, Y = Y, X = X, Z = Z,
-                  Hlist = Hlist, REML = REML,
-                  get_val = TRUE, get_score = FALSE, get_inf = FALSE,
-                  expected = TRUE, precomp = precomp, check = FALSE)$value,
-    error = function(e) -Inf
-  )
+# Log-likelihood value at psi; -Inf if the evaluation fails (infeasible psi).
+# ll is the likelihood function of make_loglik.
+.ll_value <- function(psi, ll) {
+  tryCatch(ll(psi, get_score = FALSE, get_inf = FALSE)$value,
+           error = function(e) -Inf)
+}
+
+# A starting point for the maximization over the nuisance parameters at
+# which the covariance matrix of the response, Sigma, is positive definite.
+# fixed indexes the covariance parameters that keep their values. If psi is
+# infeasible, each row of Psi is made weakly diagonally dominant as far as
+# the free parameters allow, using setup$structure: in a row whose fixed
+# diagonal entry is below the row's sum of absolute off-diagonal entries,
+# the free covariances are set to zero, and each free variance is raised to
+# the largest such sum over its rows. A weakly diagonally dominant Psi with
+# nonnegative diagonal is positive semidefinite, so Sigma is then positive
+# definite unless a fixed diagonal entry is below the fixed off-diagonal
+# entries in its row. A free error variance is then doubled until Sigma is
+# positive definite, which holds for a large enough error variance. Returns
+# NULL only if the error variance is fixed and no feasible point was found.
+.feasible_start <- function(psi, fixed, setup) {
+  if (is.finite(.ll_value(psi, setup$ll))) return(psi)
+  r       <- setup$r
+  st      <- setup$structure
+  is_free <- !(seq_len(r) %in% fixed)
+  if (r > 1) {
+    re  <- seq_len(r - 1)
+    cov <- re[!st$is_var[re]]                  # off the diagonal of Psi only
+    off_sum <- function(psi) as.vector(st$n_off %*% abs(psi[re]))
+    # The parameter on each diagonal entry of Psi, 0 if that entry is zero
+    d_idx  <- as.vector(st$on_diag %*% re)
+    d_val  <- ifelse(d_idx > 0, psi[pmax(d_idx, 1L)], 0)
+    d_free <- d_idx > 0 & is_free[pmax(d_idx, 1L)]
+    # Rows whose fixed diagonal entry is below the row's absolute
+    # off-diagonal sum: set the free covariances in them to zero
+    bad <- which(!d_free & d_val < off_sum(psi))
+    if (length(bad) > 0) {
+      in_bad <- colSums(st$n_off[bad, , drop = FALSE]) > 0
+      psi[intersect(cov[in_bad[cov]], which(is_free))] <- 0
+    }
+    # Raise each free variance to the largest off-diagonal sum in its rows
+    s_off <- off_sum(psi)
+    for (v in re[st$is_var[re] & is_free[re]]) {
+      psi[v] <- max(psi[v], s_off[st$on_diag[, v]])
+    }
+  }
+  if (is_free[r] && psi[r] <= 0) psi[r] <- setup$psi_hat[r]
+  for (k in 0:200) {
+    if (is.finite(.ll_value(psi, setup$ll))) return(psi)
+    if (!is_free[r]) return(NULL)
+    psi[r] <- 2 * psi[r]
+  }
+  NULL
 }
 
 # Profile the nuisance parameters from a warm start and evaluate the signed
 # statistic at the result; NULL if either step fails. origin_val fixes the
 # sign of the rlrt root. The rlrt statistic reuses the maximized
 # log-likelihood from maximize_loglik, so profiling and evaluation are one
-# call; its signed root is on the scale of the signed score. opt_args holds
-# the one-step settings and user optimizer arguments.
-.profile_stat <- function(theta_start, test_idx, opt_idx, known_idx,
-                          statistic, ll_max, origin_val, opt_args,
-                          Y, X, Z, Hlist, REML, expected, precomp, p) {
+# call; its signed root is on the scale of the signed score. ctx is the
+# search context built in .ci_lmer_core; ctx$opt_args holds the one-step
+# settings and user optimizer arguments.
+.profile_stat <- function(theta_start, origin_val, ctx) {
+  s <- ctx$setup
   ll_prof <- NA_real_
-  if (length(opt_idx) > 0L) {
+  if (length(ctx$opt_idx) > 0L) {
     opt <- tryCatch(
       do.call(maximize_loglik,
-              c(list(start_val = theta_start, opt_idx = opt_idx,
-                     Y = Y, X = X, Z = Z, Hlist = Hlist,
-                     expected = expected, REML = REML,
-                     precomp = precomp, check = FALSE),
-                opt_args)),
+              c(list(start_val = theta_start, opt_idx = ctx$opt_idx,
+                     ll = s$ll, expected = ctx$expected, check = FALSE),
+                ctx$opt_args)),
       error = function(e) NULL
     )
     if (is.null(opt)) return(NULL)
     theta_start <- opt$arg
     ll_prof <- opt$value
-  } else if (statistic == "rlrt") {
-    ll_prof <- .ll_value(theta_start, Y, X, Z, Hlist, REML, precomp, p)
+  } else if (ctx$statistic == "rlrt") {
+    ll_prof <- .ll_value(theta_start, s$ll)
   }
-  stat <- if (statistic == "rlrt") {
+  stat <- if (ctx$statistic == "rlrt") {
     if (!is.finite(ll_prof)) return(NULL)
-    lr <- 2 * (ll_max - ll_prof)
+    lr <- 2 * (ctx$ll_max - ll_prof)
     if (!is.finite(lr)) return(NULL)
-    sign(origin_val - theta_start[test_idx]) * sqrt(max(lr, 0))
+    sign(origin_val - theta_start[ctx$test_idx]) * sqrt(max(lr, 0))
   } else {
     tryCatch(
-      as.numeric(score_stat(theta = theta_start, test_idx = test_idx,
-                            Y = Y, X = X, Z = Z, Hlist = Hlist,
-                            REML = REML, expected = expected,
-                            efficient = TRUE, signed = TRUE,
-                            known_idx = known_idx, precomp = precomp,
-                            check = FALSE)),
+      as.numeric(score_stat(psi = theta_start, test_idx = ctx$test_idx,
+                            ll = s$ll, expected = ctx$expected, signed = TRUE,
+                            known_idx = ctx$known_idx, check = FALSE)),
       error = function(e) NA_real_
     )
   }
@@ -561,36 +423,32 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
 # An infeasible warm start halves the step, up to 20 times. The growth cap
 # then keeps later steps small near the feasibility boundary. The search
 # radius is max_steps * step_size in both modes.
-.outward_bound <- function(psi_hat, test_idx, z_crit, direction,
-                           step_size, max_steps,
-                           Y, X, Z, Hlist, REML, expected, known_idx,
-                           precomp, p = 0L, opt_args = list(),
-                           lower_clamp = -Inf, accelerate = TRUE,
-                           statistic = "score", ll_max = NULL,
-                           origin_eval) {
+#
+# ctx is the search context built in .ci_lmer_core and origin_eval the
+# profiled evaluation at the search origin, shared by both directions.
+.outward_bound <- function(ctx, origin_eval, direction, lower_clamp = -Inf) {
 
-  target    <- if (direction == -1L) z_crit else -z_crit
-  d         <- length(psi_hat)
-  exclude   <- unique(c(test_idx, known_idx))
-  opt_idx   <- seq_len(d)[-exclude]
-  growth    <- if (accelerate) 2 else 1
+  test_idx   <- ctx$test_idx
+  step_size  <- ctx$step_size
+  max_steps  <- ctx$max_steps
+  accelerate <- ctx$accelerate
+  target     <- if (direction == -1L) ctx$z_crit else -ctx$z_crit
+  growth     <- if (accelerate) 2 else 1
   max_radius <- max_steps * step_size
+  # Profiling leaves the tested component unchanged, so this is the origin
+  origin_val <- origin_eval$theta[test_idx]
+  # Covariance parameters that keep their values
+  fixed_psi <- c(test_idx, ctx$known_idx)
 
-  .ll_val  <- function(theta) .ll_value(theta, Y, X, Z, Hlist, REML,
-                                        precomp, p)
-  .eval_at <- function(theta_start) {
-    .profile_stat(theta_start, test_idx, opt_idx, known_idx, statistic,
-                  ll_max, psi_hat[test_idx], opt_args,
-                  Y, X, Z, Hlist, REML, expected, precomp, p)
-  }
+  .ll_val  <- function(theta) .ll_value(theta, ctx$setup$ll)
+  .eval_at <- function(theta_start) .profile_stat(theta_start, origin_val, ctx)
 
   # Linear interpolation of the crossing between two bracketing points
   .interp <- function(x1, y1, x2, y2) x1 - (y1 - target) * (x2 - x1) / (y2 - y1)
 
-  # Accepted-path state: current point and the one before it. The caller
-  # supplies the origin evaluation; see .ci_lmer_core.
+  # Accepted-path state: current point and the one before it
   theta_cur <- origin_eval$theta
-  val_cur   <- psi_hat[test_idx]
+  val_cur   <- origin_val
   stat_cur  <- origin_eval$stat
   theta_prev <- NULL;   val_prev <- NA_real_;         stat_prev <- NA_real_
   step <- step_size
@@ -618,6 +476,7 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
     }
 
     # If the warm start is infeasible, halve the step up to 20 times
+    prop0 <- prop_val; step0 <- step; hit0 <- hit_boundary
     n_halve <- 0L
     while (!is.finite(.ll_val(theta_warm)) && n_halve < 20L) {
       step <- step / 2
@@ -630,17 +489,22 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
       theta_warm[test_idx] <- prop_val
       n_halve <- n_halve + 1L
     }
-    if (n_halve == 20L) {
-      if (direction == -1L && is.finite(lower_clamp)) {
-        # Feasibility boundary reached near or at the clamp: return clamp.
-        return(lower_clamp)
+    if (!is.finite(.ll_val(theta_warm))) {
+      # Construct a feasible start at the original proposal instead
+      step <- step0; prop_val <- prop0; hit_boundary <- hit0
+      theta_warm <- theta_cur
+      theta_warm[test_idx] <- prop_val
+      theta_warm <- .feasible_start(theta_warm, fixed_psi, ctx$setup)
+      if (is.null(theta_warm)) {
+        # Only possible with the error variance fixed, as at a lower clamp
+        # of zero for the error variance
+        if (direction == -1L && is.finite(lower_clamp)) return(lower_clamp)
+        side <- if (direction == -1L) "lower" else "upper"
+        warning("No feasible starting point was found for the next step of ",
+                "the ", side, " search; returning ",
+                if (direction == -1L) "-Inf." else "Inf.")
+        return(if (direction == -1L) -Inf else Inf)
       }
-      # True feasibility boundary reached before crossing z_crit
-      side <- if (direction == -1L) "lower" else "upper"
-      warning("Hit feasibility boundary before crossing the critical value on ",
-              "the ", side, " side. CI bound may be at the boundary of the ",
-              "parameter space.")
-      return(if (direction == -1L) -Inf else Inf)
     }
 
     res <- .eval_at(theta_warm)
@@ -718,7 +582,7 @@ ci_all_lmer <- function(lmerfit, test_idx = NULL, level = 0.95,
     }
 
     # Same search radius as the fixed-step search with max_steps steps
-    if (direction * (val_cur - psi_hat[test_idx]) > max_radius) break
+    if (direction * (val_cur - origin_val) > max_radius) break
   }
 
   side <- if (direction == -1L) "lower" else "upper"

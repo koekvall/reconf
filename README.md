@@ -41,16 +41,24 @@ library(reconf)
 fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy)
 
 # 95% score-based CIs for all covariance parameters, residual variance included
-ci_all_lmer(fit)
+vc_ci(fit)
 
-# CI for a single parameter (e.g. the random intercept variance, index 1)
-ci_lmer(fit, test_idx = 1)
+# CI for selected parameters, by name or index
+vc_ci(fit, parm = "var_(Intercept)|Subject")
 
-# Score tests of each covariance parameter against zero
-score_test_all_lmer(fit)
+# Score test that the random slope variance (index 3) is zero
+vc_test(fit, parm = 3)
 
-# Joint score test: H0 that all random-effect covariance parameters are zero
-score_test_lmer(fit)
+# Score test that all random-effect covariance parameters are zero
+vc_test(fit)
+
+# Build the model once to reuse its precomputation across calls
+m <- vc_model(fit)
+vc_ci(m, parm = 3)
+
+# Log-likelihood, score, and information at any covariance parameters
+ll <- vc_loglik(fit)
+ll(c(600, 10, 35, 650))
 ```
 
 The parameter ordering follows `as.data.frame(VarCorr(fit), order = "lower.tri")`, with the residual variance last.

@@ -5,18 +5,20 @@
 #'
 #' Constructs the covariance matrix of the random effects
 #'
-#' @param psi_mr A vector of covariance parameter (see ?loglikelihood)
+#' @param psi_mr A vector of covariance parameter (see ?make_loglik)
 #' @param H Sparse matrix of derivatives of Psi with respect to elements of psi,
 #'        \eqn{H = [H_1, \dots , H_{r - 1}]}, where \eqn{H_j = \partial \Psi / \partial \psi_j}.
 #' @return The covariance matrix \eqn{\Psi}
+#' @noRd
 Psi_from_H_cpp <- function(psi_mr, H) {
     .Call(`_reconf_Psi_from_H_cpp`, psi_mr, H)
 }
 
-#' Log-likelihood using RcppEigen
+#' Profile log-likelihood using RcppEigen
 #'
-#' Computes the log-likelihood, score vector, and information matrix
-#' for the covariance parameter vector in a linear mixed effects model.
+#' Computes the log-likelihood maximized over the fixed effects, and its
+#' score vector and information matrix for the covariance parameters of a
+#' linear mixed effects model.
 #'
 #' @param A The \eqn{q \times q} sparse matrix
 #'        \eqn{A = (I_q + \Psi_r Z'Z)^{-1} \Psi_r}, where \eqn{\Psi_r = \Psi / \psi_r},
@@ -26,21 +28,23 @@ Psi_from_H_cpp <- function(psi_mr, H) {
 #' @param psi_r The error variance \eqn{\psi_r > 0}.
 #' @param H Sparse \eqn{q \times (qr - q)} matrix of horizontally concatenated
 #'        derivatives of \eqn{\Psi} (see details) of class \code{dgCMatrix}.
-#' @param e Vector of length \eqn{n} of errors, or residuals, \eqn{e = Y - X \beta}.
+#' @param Y Vector of length \eqn{n} of responses.
 #' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
 #' @param Z Sparse \eqn{n \times q} random effect design matrix of class \code{dgCMatrix}.
 #' @param XtX Precomputed matrix \code{crossprod(X)} of class \code{matrix}.
 #' @param XtZ Precomputed matrix \code{crossprod(X, Z)} of class \code{matrix}.
 #' @param ZtZ Precomputed matrix \code{crossprod(Z)} of class \code{dgCMatrix}.
+#' @param XtY Precomputed vector \code{crossprod(X, Y)}.
+#' @param ZtY Precomputed vector \code{crossprod(Z, Y)}.
 #' @param get_val If \code{TRUE}, the value of the loglikelihood is computed.
 #' @param get_score If \code{TRUE} the score vector is calculated.
 #' @param get_inf If \code{TRUE}, an information matrix is calculated.
 #' @param expected If \code{TRUE}, the expected information is calculated; otherwise
-#' the observed, or negative Hessian of the loglikelihood.
+#' the observed, or negative Hessian of the profile loglikelihood.
 #'
 #' @return A list with components:
-#' \item{value}{The value of the log-likelihood}
-#' \item{score}{The score, or gradient of the log-likelihood, for \eqn{\psi}}
+#' \item{value}{The value of the profile log-likelihood}
+#' \item{score}{Its gradient, the score for \eqn{\psi}}
 #' \item{inf_mat}{The information matrix for \eqn{\psi}}
 #'
 #' @details The model is \deqn{Y = X\beta + Z U + E,} where \eqn{U \sim N_q(0, \Psi)}
@@ -52,23 +56,27 @@ Psi_from_H_cpp <- function(psi_mr, H) {
 #' are variances and covariances of random effects.
 #' The argument matrix \code{H} is \eqn{H = [H_1, \dots, H_{r - 1}]}.
 #'
-#' The fixed effects \eqn{\beta} affect the likelihood only through the
-#' precomputed \eqn{e = Y - X\beta}.
-#'
-#' The information matrix includes both \eqn{\beta} and \eqn{\psi} parameters,
-#' with dimensions \eqn{(p + r) \times (p + r)}.
+#' The fixed effects are profiled out: the log-likelihood is evaluated at
+#' the generalized least squares estimate
+#' \eqn{\hat\beta(\psi) = (X'\Sigma^{-1}X)^{-1}X'\Sigma^{-1}Y}. Its gradient
+#' in \eqn{\psi} is the score for \eqn{\psi} at \eqn{\hat\beta(\psi)}, and its
+#' negative Hessian is the Schur complement of the \eqn{\beta} block in the
+#' observed information for \eqn{(\beta, \psi)}. The expected information
+#' for \eqn{(\beta, \psi)} has a zero cross block, so its Schur complement is
+#' its \eqn{\psi} block.
 #'
 #' The caller must verify that the parameters are feasible, that is,
 #' \eqn{\psi_r > 0} and \eqn{\Sigma = Z \Psi Z' + \psi_r I_n} positive
 #' definite, and must compute \code{A} and \code{ldetB}. Solving for
 #' \code{A} with a solver that exploits sparsity in the right-hand side (for
 #' example \code{Matrix::solve}) is much faster than a dense solve when the
-#' random effects are block-structured.
+#' random effects are block-structured. If \eqn{X'\Sigma^{-1}X} is not
+#' positive definite, \code{value} is \code{-Inf} and score and information
+#' are zero.
 #'
-#' @useDynLib reconf, .registration=TRUE
-#' @import Matrix
-loglik <- function(A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
-    .Call(`_reconf_loglik`, A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val, get_score, get_inf, expected)
+#' @noRd
+loglik <- function(A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
+    .Call(`_reconf_loglik`, A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val, get_score, get_inf, expected)
 }
 
 #' Restricted log-likelihood using RcppEigen
@@ -103,11 +111,6 @@ loglik <- function(A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, g
 #' \item{value}{The value of the restricted log-likelihood}
 #' \item{score}{The restricted score, or gradient of the restricted log-likelihood, for \eqn{\psi}}
 #' \item{inf_mat}{The restricted information matrix for \eqn{\psi}}
-#' \item{beta}{Partial maximizer of the regular likelihood in \eqn{\beta},
-#'   \eqn{\tilde{\beta} = (X' \Sigma^{-1} X)^{-1} X' \Sigma^{-1}Y},
-#'   where \eqn{\Sigma = Z\Psi Z' + \psi_r I_n}}
-#' \item{I_b_chol}{Cholesky root of the expected information matrix
-#'   for \eqn{\beta}, \eqn{I(\beta; \psi) = X' \Sigma^{-1} X}}
 #'
 #' @details See \code{?loglik} for the model and the parameterization of
 #' \eqn{\Psi} through \code{H}. The restricted likelihood integrates out the
@@ -124,40 +127,41 @@ loglik <- function(A, ldetB, psi_r, H, e, X, Z, XtX, XtZ, ZtZ, get_val = TRUE, g
 #' The observed information is the expected information with the sign
 #' flipped plus the stochastic matrix with entries
 #' \eqn{u_j' \Sigma^{-1} Q u_k}, where \eqn{u_j = Z H_j Z' \tilde{e}}
-#' (\eqn{u_r = \tilde{e}}), \eqn{\tilde{e} = \Sigma^{-1}(Y - X\tilde{\beta})},
+#' (\eqn{u_r = \tilde{e}}), \eqn{\tilde{e} = \Sigma^{-1}(Y - X\tilde{\beta})}
+#' with \eqn{\tilde{\beta} = (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}Y},
 #' and \eqn{Q = I_n - X (X'\Sigma^{-1}X)^{-1} X'\Sigma^{-1}}. The added
 #' terms are matrix-vector products, so they cost no more than the score.
 #'
-#' @useDynLib reconf, .registration=TRUE
-#' @import Matrix
+#' @noRd
 loglik_res <- function(A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
     .Call(`_reconf_loglik_res`, A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get_val, get_score, get_inf, expected)
 }
 
-#' Log-likelihood via the n-by-n formulation
+#' Profile log-likelihood via the n-by-n formulation
 #'
-#' Computes the log-likelihood, score vector, and information matrix for the
-#' covariance parameters using dense n-by-n algebra. Intended for models
-#' where the number of random effects \eqn{q} exceeds, or is comparable to,
-#' the number of observations \eqn{n}; see \code{?loglik} for the model and
-#' the q-by-q counterpart.
+#' Computes the log-likelihood maximized over the fixed effects, and its
+#' score vector and information matrix for the covariance parameters, using
+#' dense n-by-n algebra. Intended for models where the number of random
+#' effects \eqn{q} exceeds, or is comparable to, the number of observations
+#' \eqn{n}; see \code{?loglik} for the model, the profiling, and the q-by-q
+#' counterpart.
 #'
 #' @param K Dense \eqn{n \times n(r - 1)} matrix of horizontally concatenated
 #'        \eqn{K_j = Z H_j Z'}. The \eqn{K_j} do not depend on \eqn{\psi} and
 #'        are precomputed once by \code{get_precomp}.
 #' @param psi Vector of length \eqn{r} of covariance parameters; the last
 #'        element is the error variance \eqn{\psi_r}.
-#' @param e Vector of length \eqn{n} of errors, or residuals, \eqn{e = Y - X\beta}.
+#' @param Y Vector of length \eqn{n} of responses.
 #' @param X Matrix of size \eqn{n \times p} of predictors, of class \code{matrix}.
 #' @param get_val If \code{TRUE}, the value of the log-likelihood is computed.
 #' @param get_score If \code{TRUE} the score vector is calculated.
 #' @param get_inf If \code{TRUE}, an information matrix is calculated.
 #' @param expected If \code{TRUE}, the expected information is calculated;
-#'        otherwise the observed, or negative Hessian of the log-likelihood.
+#'        otherwise the observed, or negative Hessian of the profile
+#'        log-likelihood.
 #'
 #' @return A list with components \code{value}, \code{score}, and
-#' \code{inf_mat} as in \code{?loglik}, with score and information of
-#' dimension \eqn{p + r}.
+#' \code{inf_mat} as in \code{?loglik}.
 #'
 #' @details Each evaluation forms \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j}
 #' and factorizes it densely, so the cost is \eqn{O(r n^3 + r^2 n^2)},
@@ -167,12 +171,13 @@ loglik_res <- function(A, ldetB, psi_r, H, Y, X, Z, XtX, XtZ, ZtZ, XtY, ZtY, get
 #' caller: \eqn{\Sigma} is positive definite iff its Cholesky factorization
 #' succeeds. When \eqn{q \ge n}, \eqn{Z \Psi Z'} alone can be positive
 #' definite, so \eqn{\psi_r > 0} is checked separately. At infeasible
-#' parameters \code{value} is \code{-Inf} (regardless of \code{get_val}) and
-#' score and information are zero.
+#' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
+#' \code{value} is \code{-Inf} (regardless of \code{get_val}) and score and
+#' information are zero.
 #'
-#' @useDynLib reconf, .registration=TRUE
-loglik_n <- function(K, psi, e, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
-    .Call(`_reconf_loglik_n`, K, psi, e, X, get_val, get_score, get_inf, expected)
+#' @noRd
+loglik_n <- function(K, psi, Y, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
+    .Call(`_reconf_loglik_n`, K, psi, Y, X, get_val, get_score, get_inf, expected)
 }
 
 #' Restricted log-likelihood via the n-by-n formulation
@@ -195,8 +200,8 @@ loglik_n <- function(K, psi, e, X, get_val = TRUE, get_score = TRUE, get_inf = T
 #'        otherwise the observed, or negative Hessian of the restricted
 #'        log-likelihood.
 #'
-#' @return A list with components \code{value}, \code{score}, \code{inf_mat},
-#' \code{beta}, and \code{I_b_chol} as in \code{?loglik_res}.
+#' @return A list with components \code{value}, \code{score}, and
+#' \code{inf_mat} as in \code{?loglik_res}.
 #'
 #' @details All quantities are computed from the dense factorization of
 #' \eqn{\Sigma = \psi_r I_n + \sum_j \psi_j K_j} and the projection
@@ -211,10 +216,10 @@ loglik_n <- function(K, psi, e, X, get_val = TRUE, get_score = TRUE, get_inf = T
 #'
 #' Feasibility is decided here as in \code{?loglik_n}: at infeasible
 #' parameters, or when \eqn{X'\Sigma^{-1}X} is not positive definite,
-#' \code{value} is \code{-Inf} (regardless of \code{get_val}), score and
-#' information are zero, and \code{beta} and \code{I_b_chol} are \code{NA}.
+#' \code{value} is \code{-Inf} (regardless of \code{get_val}) and score
+#' and information are zero.
 #'
-#' @useDynLib reconf, .registration=TRUE
+#' @noRd
 loglik_res_n <- function(K, psi, Y, X, get_val = TRUE, get_score = TRUE, get_inf = TRUE, expected = TRUE) {
     .Call(`_reconf_loglik_res_n`, K, psi, Y, X, get_val, get_score, get_inf, expected)
 }

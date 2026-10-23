@@ -1,5 +1,10 @@
 # reconf
 
+<!-- badges: start -->
+[![CRAN status](https://www.r-pkg.org/badges/version/reconf)](https://CRAN.R-project.org/package=reconf)
+[![R-CMD-check](https://github.com/koekvall/reconf/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/koekvall/reconf/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
 Score-based confidence intervals and hypothesis tests for variances and
 covariances of random effects in linear mixed models fitted with
 [lme4](https://github.com/lme4/lme4).
@@ -40,10 +45,16 @@ laptop.
 
 ## Installation
 
+Install the released version from
+[CRAN](https://CRAN.R-project.org/package=reconf):
+
 ```r
 install.packages("reconf")
+```
 
-# Development version
+or the development version from GitHub:
+
+```r
 remotes::install_github("koekvall/reconf")
 ```
 

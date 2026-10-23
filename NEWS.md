@@ -1,5 +1,7 @@
 # reconf 0.2.0
 
+* First CRAN release.
+
 ## New interface
 
 * The functions are `vc_ci()` for confidence intervals, `vc_test()` for

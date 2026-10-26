@@ -1,3 +1,8 @@
+# reconf (development version)
+
+* `vc_test()` and `vc_ci()` warn when the maximization over the nuisance
+  parameters stops away from a root of their score.
+
 # reconf 0.2.0
 
 * First CRAN release.

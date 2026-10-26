@@ -65,7 +65,8 @@ estimates in the model, with the covariances of a random effect
 whose variance is tested at zero set to zero. If the covariance matrix
 of the response is not positive definite at this start, free entries
 of \eqn{\Psi} are changed to make its blocks weakly diagonally
-dominant, and the error variance is doubled until it is.
+dominant, and the error variance is doubled until it is. A warning is
+issued if the maximization stops away from a root of the score.
 }
 \examples{
 library(lme4)

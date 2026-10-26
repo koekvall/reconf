@@ -35,6 +35,7 @@
 #'   update with \code{iterlim = 1}.
 #' @param check If \code{TRUE} (default), validate arguments. Internal callers
 #'   in loops set \code{FALSE} to skip redundant validation.
+#' @param root_tol Tolerance for \code{root}. Default is 0.1.
 #' @param ... Additional arguments passed to \code{\link[trust]{trust}}, such
 #'   as the tolerances \code{fterm} and \code{mterm}.
 #'
@@ -44,12 +45,15 @@
 #'   \item{value}{The maximized log-likelihood.}
 #'   \item{conv}{Logical, whether the optimizer converged.}
 #'   \item{iter}{The number of iterations.}
+#'   \item{root}{Logical, whether \code{score_max < root_tol}.}
+#'   \item{score_max}{The largest absolute score in \code{opt_idx}, each
+#'     divided by its \code{parscale} entry.}
 #'
 #' @noRd
 maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
                             rinit = 1, rmax = 100, parscale = NULL,
                             iterlim = 1000L, warn_nonconv = TRUE,
-                            check = TRUE, ...) {
+                            check = TRUE, root_tol = 0.1, ...) {
   if (check) {
     .check_psi(start_val, r = attr(ll, "r"))
     .check_idx(opt_idx, "opt_idx", length(start_val), unique = TRUE)
@@ -85,10 +89,20 @@ maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
             " iterations")
   }
 
+  # Root check in units of parscale
+  ps <- if (is.null(parscale)) rep(1, length(opt_idx)) else parscale
+  z <- abs(fit$gradient) / ps
+  score_max <- if (length(z) == length(opt_idx) && all(is.finite(z))) {
+    max(z)
+  } else {
+    Inf
+  }
+
   start_val[opt_idx] <- fit$argument
   names(start_val) <- paste0("psi", seq_along(start_val))
   list("arg" = start_val, "value" = -fit$value, "conv" = fit$converged,
-       "iter" = fit$iterations)
+       "iter" = fit$iterations, "root" = score_max < root_tol,
+       "score_max" = score_max)
 }
 
 #' Score statistic

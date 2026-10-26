@@ -114,6 +114,10 @@ With \code{statistic = "rlrt"}, the search starts from the maximizer over
 the parameter set. A warning is issued if that maximizer has a negative
 variance; the interval for that variance can then lie entirely below zero.
 
+A warning is also issued if the maximization over the nuisance parameters
+stops away from a root of their score at some point of the search; this
+is not checked with \code{onestep = TRUE}.
+
 The likelihood is computed by one of three methods. \code{"q_side"} uses
 sparse \eqn{q \times q} matrices, where \eqn{q} is the number of random
 effects. \code{"n_side"} uses dense \eqn{n \times n} matrices. For models

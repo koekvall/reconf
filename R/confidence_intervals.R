@@ -81,6 +81,10 @@
 #' the parameter set. A warning is issued if that maximizer has a negative
 #' variance; the interval for that variance can then lie entirely below zero.
 #'
+#' A warning is also issued if the maximization over the nuisance parameters
+#' stops away from a root of their score at some point of the search; this
+#' is not checked with \code{onestep = TRUE}.
+#'
 #' The likelihood is computed by one of three methods. \code{"q_side"} uses
 #' sparse \eqn{q \times q} matrices, where \eqn{q} is the number of random
 #' effects. \code{"n_side"} uses dense \eqn{n \times n} matrices. For models
@@ -234,12 +238,15 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
   opt_idx <- seq_along(setup$psi_hat)[-unique(c(test_idx, known_idx))]
 
   # Everything the profile evaluations and the outward search need that is
-  # fixed for this parameter
+  # fixed for this parameter; roots counts maximizations and missed roots
+  roots <- new.env()
+  roots$n <- 0L
+  roots$miss <- 0L
   ctx <- list(setup = setup, test_idx = test_idx, known_idx = known_idx,
               opt_idx = opt_idx, statistic = statistic, ll_max = ll_max,
               expected = expected, opt_args = opt_args, z_crit = z_crit,
               step_size = step_size, max_steps = as.integer(num_points),
-              accelerate = accelerate)
+              accelerate = accelerate, onestep = onestep, roots = roots)
 
   # Evaluate the signed statistic at the search origin. It vanishes at an
   # interior maximizer but not at a boundary estimate, and an assumed zero
@@ -307,6 +314,13 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
   if (is.finite(lower) && is.finite(upper) && lower > upper) {
     warning("Lower bound is not less than upper bound. ",
             "Consider decreasing step_size or increasing num_points.")
+  }
+
+  if (roots$miss > 0L) {
+    warning("For '", setup$names[test_idx], "', the maximization over the ",
+            "nuisance parameters stopped away from a root of their score at ",
+            roots$miss, " of ", roots$n, " points of the search; the ",
+            "interval may be unreliable.")
   }
 
   matrix(c(setup$psi_hat[test_idx], lower, upper), nrow = 1L,
@@ -408,6 +422,10 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
       error = function(e) NULL
     )
     if (is.null(opt)) return(NULL)
+    if (!ctx$onestep) {
+      ctx$roots$n <- ctx$roots$n + 1L
+      if (!opt$root) ctx$roots$miss <- ctx$roots$miss + 1L
+    }
     theta_start <- opt$arg
     ll_prof <- opt$value
   } else if (ctx$statistic == "rlrt") {

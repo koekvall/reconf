@@ -12,33 +12,33 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // Psi_from_H_cpp
-Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi_mr, const Eigen::MappedSparseMatrix<double> H);
+Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi_mr, const Eigen::Map<Eigen::SparseMatrix<double>> H);
 RcppExport SEXP _reconf_Psi_from_H_cpp(SEXP psi_mrSEXP, SEXP HSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type psi_mr(psi_mrSEXP);
-    Rcpp::traits::input_parameter< const Eigen::MappedSparseMatrix<double> >::type H(HSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::SparseMatrix<double>> >::type H(HSEXP);
     rcpp_result_gen = Rcpp::wrap(Psi_from_H_cpp(psi_mr, H));
     return rcpp_result_gen;
 END_RCPP
 }
 // loglik
-Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A, const double ldetB, const double psi_r, Eigen::SparseMatrix<double> H, const Eigen::Map<Eigen::VectorXd> Y, const Eigen::Map<Eigen::MatrixXd> X, const Eigen::MappedSparseMatrix<double> Z, const Eigen::Map<Eigen::MatrixXd> XtX, const Eigen::Map<Eigen::MatrixXd> XtZ, const Eigen::MappedSparseMatrix<double> ZtZ, const Eigen::Map<Eigen::VectorXd> XtY, const Eigen::Map<Eigen::VectorXd> ZtY, const bool get_val, const bool get_score, const bool get_inf, const bool expected);
+Rcpp::List loglik(const Eigen::Map<Eigen::SparseMatrix<double>> A, const double ldetB, const double psi_r, Eigen::SparseMatrix<double> H, const Eigen::Map<Eigen::VectorXd> Y, const Eigen::Map<Eigen::MatrixXd> X, const Eigen::Map<Eigen::SparseMatrix<double>> Z, const Eigen::Map<Eigen::MatrixXd> XtX, const Eigen::Map<Eigen::MatrixXd> XtZ, const Eigen::Map<Eigen::SparseMatrix<double>> ZtZ, const Eigen::Map<Eigen::VectorXd> XtY, const Eigen::Map<Eigen::VectorXd> ZtY, const bool get_val, const bool get_score, const bool get_inf, const bool expected);
 RcppExport SEXP _reconf_loglik(SEXP ASEXP, SEXP ldetBSEXP, SEXP psi_rSEXP, SEXP HSEXP, SEXP YSEXP, SEXP XSEXP, SEXP ZSEXP, SEXP XtXSEXP, SEXP XtZSEXP, SEXP ZtZSEXP, SEXP XtYSEXP, SEXP ZtYSEXP, SEXP get_valSEXP, SEXP get_scoreSEXP, SEXP get_infSEXP, SEXP expectedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Eigen::MappedSparseMatrix<double> >::type A(ASEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::SparseMatrix<double>> >::type A(ASEXP);
     Rcpp::traits::input_parameter< const double >::type ldetB(ldetBSEXP);
     Rcpp::traits::input_parameter< const double >::type psi_r(psi_rSEXP);
     Rcpp::traits::input_parameter< Eigen::SparseMatrix<double> >::type H(HSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type Y(YSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::MatrixXd> >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const Eigen::MappedSparseMatrix<double> >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::SparseMatrix<double>> >::type Z(ZSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::MatrixXd> >::type XtX(XtXSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::MatrixXd> >::type XtZ(XtZSEXP);
-    Rcpp::traits::input_parameter< const Eigen::MappedSparseMatrix<double> >::type ZtZ(ZtZSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::SparseMatrix<double>> >::type ZtZ(ZtZSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type XtY(XtYSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type ZtY(ZtYSEXP);
     Rcpp::traits::input_parameter< const bool >::type get_val(get_valSEXP);
@@ -50,7 +50,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // loglik_res
-Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A, const double ldetB, const double psi_r, const Eigen::SparseMatrix<double> H, Eigen::VectorXd Y, const Eigen::Map<Eigen::MatrixXd> X, const Eigen::MappedSparseMatrix<double> Z, const Eigen::Map<Eigen::MatrixXd> XtX, const Eigen::Map<Eigen::MatrixXd> XtZ, const Eigen::MappedSparseMatrix<double> ZtZ, const Eigen::Map<Eigen::VectorXd> XtY, const Eigen::Map<Eigen::VectorXd> ZtY, const bool get_val, const bool get_score, const bool get_inf, const bool expected);
+Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A, const double ldetB, const double psi_r, const Eigen::SparseMatrix<double> H, Eigen::VectorXd Y, const Eigen::Map<Eigen::MatrixXd> X, const Eigen::Map<Eigen::SparseMatrix<double>> Z, const Eigen::Map<Eigen::MatrixXd> XtX, const Eigen::Map<Eigen::MatrixXd> XtZ, const Eigen::Map<Eigen::SparseMatrix<double>> ZtZ, const Eigen::Map<Eigen::VectorXd> XtY, const Eigen::Map<Eigen::VectorXd> ZtY, const bool get_val, const bool get_score, const bool get_inf, const bool expected);
 RcppExport SEXP _reconf_loglik_res(SEXP ASEXP, SEXP ldetBSEXP, SEXP psi_rSEXP, SEXP HSEXP, SEXP YSEXP, SEXP XSEXP, SEXP ZSEXP, SEXP XtXSEXP, SEXP XtZSEXP, SEXP ZtZSEXP, SEXP XtYSEXP, SEXP ZtYSEXP, SEXP get_valSEXP, SEXP get_scoreSEXP, SEXP get_infSEXP, SEXP expectedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -61,10 +61,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const Eigen::SparseMatrix<double> >::type H(HSEXP);
     Rcpp::traits::input_parameter< Eigen::VectorXd >::type Y(YSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::MatrixXd> >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const Eigen::MappedSparseMatrix<double> >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::SparseMatrix<double>> >::type Z(ZSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::MatrixXd> >::type XtX(XtXSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::MatrixXd> >::type XtZ(XtZSEXP);
-    Rcpp::traits::input_parameter< const Eigen::MappedSparseMatrix<double> >::type ZtZ(ZtZSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::SparseMatrix<double>> >::type ZtZ(ZtZSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type XtY(XtYSEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type ZtY(ZtYSEXP);
     Rcpp::traits::input_parameter< const bool >::type get_val(get_valSEXP);

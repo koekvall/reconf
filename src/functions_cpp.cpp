@@ -11,7 +11,7 @@
 //' @noRd
 // [[Rcpp::export]]
 Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi_mr,
-                                           const Eigen::MappedSparseMatrix<double> H) { //
+                                           const Eigen::Map<Eigen::SparseMatrix<double>> H) { //
   int q = H.rows();
   int rm1 = H.cols() / q;
   Eigen::SparseMatrix<double> Psi(q, q);
@@ -85,16 +85,16 @@ Eigen::SparseMatrix<double> Psi_from_H_cpp(const Eigen::Map<Eigen::VectorXd> psi
 //'
 //' @noRd
 // [[Rcpp::export]]
-Rcpp::List loglik(const Eigen::MappedSparseMatrix<double> A,
+Rcpp::List loglik(const Eigen::Map<Eigen::SparseMatrix<double>> A,
                   const double ldetB,
                   const double psi_r,
                   Eigen::SparseMatrix<double> H,
                   const Eigen::Map<Eigen::VectorXd> Y,
                   const Eigen::Map<Eigen::MatrixXd> X,
-                  const Eigen::MappedSparseMatrix<double> Z,
+                  const Eigen::Map<Eigen::SparseMatrix<double>> Z,
                   const Eigen::Map<Eigen::MatrixXd> XtX,
                   const Eigen::Map<Eigen::MatrixXd> XtZ,
-                  const Eigen::MappedSparseMatrix<double> ZtZ,
+                  const Eigen::Map<Eigen::SparseMatrix<double>> ZtZ,
                   const Eigen::Map<Eigen::VectorXd> XtY,
                   const Eigen::Map<Eigen::VectorXd> ZtY,
                   const bool get_val = true,
@@ -294,10 +294,10 @@ Rcpp::List loglik_res(const Eigen::SparseMatrix<double> A,
                       const Eigen::SparseMatrix<double> H,
                       Eigen::VectorXd Y,
                       const Eigen::Map<Eigen::MatrixXd> X,
-                      const Eigen::MappedSparseMatrix<double> Z,
+                      const Eigen::Map<Eigen::SparseMatrix<double>> Z,
                       const Eigen::Map<Eigen::MatrixXd> XtX,
                       const Eigen::Map<Eigen::MatrixXd> XtZ,
-                      const Eigen::MappedSparseMatrix<double> ZtZ,
+                      const Eigen::Map<Eigen::SparseMatrix<double>> ZtZ,
                       const Eigen::Map<Eigen::VectorXd> XtY,
                       const Eigen::Map<Eigen::VectorXd> ZtY,
                       const bool get_val = true,

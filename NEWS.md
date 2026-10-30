@@ -1,5 +1,8 @@
-# reconf (development version)
+# reconf 0.2.1
 
+* Builds with Eigen 5 (RcppEigen 0.4.9.9 and later): sparse matrix
+  arguments use `Eigen::Map<Eigen::SparseMatrix<double>>` in place of
+  `Eigen::MappedSparseMatrix`, which Eigen 5 removes (#4, @eddelbuettel).
 * `vc_test()` and `vc_ci()` warn when the maximization over the nuisance
   parameters stops away from a root of their score. `vc_ci()` also warns
   when the maximization over the parameter set does, for

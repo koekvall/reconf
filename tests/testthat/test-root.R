@@ -13,10 +13,13 @@ fit_miss <- suppressMessages(lmer(y ~ x + (x | g)))
 
 # ── root check ──────────────────────────────────────────────────────────────
 
+# The misses below depend on the optimizer path, which can differ across
+# platforms, so they are not run on CRAN
 test_that("maximize_loglik flags whether it found a root", {
   m <- vc_model(fit_rs)
   expect_true(reconf:::maximize_loglik(m$psi_hat, 1:4, m$ll)$root)
 
+  skip_on_cran()
   m <- vc_model(fit_miss)
   psi <- m$psi_hat
   psi[2] <- 2.4975
@@ -27,10 +30,12 @@ test_that("maximize_loglik flags whether it found a root", {
 })
 
 test_that("vc_test warns when no root is found", {
-  expect_warning(vc_test(fit_miss, parm = 2L, null_value = 2.4975),
-                 "root of their score")
   w <- capture_warnings(vc_test(fit_rs))
   expect_false(any(grepl("root of their score", w)))
+
+  skip_on_cran()
+  expect_warning(vc_test(fit_miss, parm = 2L, null_value = 2.4975),
+                 "root of their score")
 })
 
 test_that("vc_ci warns once per interval when no root is found", {
@@ -40,4 +45,13 @@ test_that("vc_ci warns once per interval when no root is found", {
   w <- capture_warnings(vc_ci(fit_miss, parm = 2L, num_points = 20,
                               onestep = TRUE))
   expect_false(any(grepl("root of their score", w)))
+})
+
+test_that("the extended-set maximization warns when no root is found", {
+  w <- capture_warnings(reconf:::.rlrt_reference(vc_model(fit_rs), NULL))
+  expect_false(any(grepl("extended parameter set", w)))
+
+  skip_on_cran()
+  expect_warning(reconf:::.rlrt_reference(vc_model(fit_miss), NULL),
+                 "extended parameter set")
 })

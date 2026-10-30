@@ -47,7 +47,9 @@
 #'   \item{iter}{The number of iterations.}
 #'   \item{root}{Logical, whether \code{score_max < root_tol}.}
 #'   \item{score_max}{The largest absolute score in \code{opt_idx}, each
-#'     divided by its \code{parscale} entry.}
+#'     divided by its \code{parscale} entry, or, if trust's default scaling
+#'     was used, by the square root of the information diagonal at the
+#'     result; \code{Inf} if that diagonal is not positive.}
 #'
 #' @noRd
 maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
@@ -72,10 +74,11 @@ maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
   if (is.null(parscale)) {
     # trust's region is ||diag(parscale) s|| <= r; the square root of the
     # information diagonal at the start makes it the diagonal information
-    # metric there.
-    ps <- sqrt(diag(as.matrix(obj_fun(start_val[opt_idx])$hessian)))
-    if (all(is.finite(ps)) && all(ps > 0)) {
-      parscale <- ps
+    # metric there. The observed information can have a nonpositive
+    # diagonal away from a maximizer; trust's default is used then.
+    d <- diag(as.matrix(obj_fun(start_val[opt_idx])$hessian))
+    if (all(is.finite(d)) && all(d > 0)) {
+      parscale <- sqrt(d)
     }
   }
 
@@ -89,13 +92,18 @@ maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
             " iterations")
   }
 
-  # Root check in units of parscale
-  ps <- if (is.null(parscale)) rep(1, length(opt_idx)) else parscale
-  z <- abs(fit$gradient) / ps
-  score_max <- if (length(z) == length(opt_idx) && all(is.finite(z))) {
-    max(z)
-  } else {
-    Inf
+  # Root check in units of parscale. Without one, standardize by the
+  # information diagonal at the result; a nonpositive diagonal there means
+  # the result is not a maximizer.
+  ps <- parscale
+  if (is.null(ps)) {
+    d <- diag(as.matrix(fit$hessian))
+    if (all(is.finite(d)) && all(d > 0)) ps <- sqrt(d)
+  }
+  score_max <- Inf
+  if (!is.null(ps)) {
+    z <- abs(fit$gradient) / ps
+    if (length(z) == length(opt_idx) && all(is.finite(z))) score_max <- max(z)
   }
 
   start_val[opt_idx] <- fit$argument

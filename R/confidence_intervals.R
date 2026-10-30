@@ -82,8 +82,9 @@
 #' variance; the interval for that variance can then lie entirely below zero.
 #'
 #' A warning is also issued if the maximization over the nuisance parameters
-#' stops away from a root of their score at some point of the search; this
-#' is not checked with \code{onestep = TRUE}.
+#' stops away from a root of their score at some point of the search, or if
+#' the maximization over the parameter set does, when its maximizer is used.
+#' The search points are not checked with \code{onestep = TRUE}.
 #'
 #' The likelihood is computed by one of three methods. \code{"q_side"} uses
 #' sparse \eqn{q \times q} matrices, where \eqn{q} is the number of random
@@ -272,6 +273,9 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
       rlrt_ref <- .rlrt_reference(setup, known_idx, expected, ...)
     }
     theta_origin <- rlrt_ref$arg
+    # The evaluation at the estimate is discarded, and so are its root counts
+    roots$n <- 0L
+    roots$miss <- 0L
     origin_eval <- .origin_eval()
   }
 
@@ -342,10 +346,17 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
 .rlrt_reference <- function(setup, known_idx, expected = TRUE, ...) {
   free_idx <- seq_len(setup$r)
   if (length(known_idx) > 0L) free_idx <- setdiff(free_idx, known_idx)
-  do.call(maximize_loglik,
-          c(list(start_val = setup$psi_hat, opt_idx = free_idx,
-                 ll = setup$ll, expected = expected, check = FALSE),
-            list(...)))
+  ref <- do.call(maximize_loglik,
+                 c(list(start_val = setup$psi_hat, opt_idx = free_idx,
+                        ll = setup$ll, expected = expected, check = FALSE),
+                   list(...)))
+  if (!ref$root) {
+    warning("The maximization over the extended parameter set stopped away ",
+            "from a root of the score (largest standardized score ",
+            format(ref$score_max, digits = 3), "); intervals that use the ",
+            "maximizer may be unreliable.")
+  }
+  ref
 }
 
 # Log-likelihood value at psi; -Inf if the evaluation fails (infeasible psi).

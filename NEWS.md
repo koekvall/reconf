@@ -1,7 +1,11 @@
 # reconf (development version)
 
 * `vc_test()` and `vc_ci()` warn when the maximization over the nuisance
-  parameters stops away from a root of their score.
+  parameters stops away from a root of their score. `vc_ci()` also warns
+  when the maximization over the parameter set does, for
+  `statistic = "rlrt"` and when the search restarts from that maximizer.
+* No "NaNs produced" warnings when the information at the start of a
+  maximization has a nonpositive diagonal, as in some nearly singular fits.
 
 # reconf 0.2.0
 

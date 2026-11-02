@@ -41,9 +41,18 @@ For an lme4 fit the likelihood is the restricted likelihood if
 the model was fitted by REML, and the estimates are those of lme4. The
 parameters are ordered as in
 \code{as.data.frame(VarCorr(x), order = "lower.tri")}, with the error
-variance last. Prior weights \eqn{w_i} and offsets are supported; as in
-\code{lme4}, observation \eqn{i} then has error variance
-\eqn{\psi_r / w_i}, with \eqn{\psi_r} the error variance parameter.
+variance last. A term with a covariance structure (lme4 2.0 and later)
+has only its distinct parameters: a \code{diag()} term has no
+covariances, and a variance or covariance shared by the term's effects,
+as in \code{diag(hom = TRUE)} and \code{cs(hom = TRUE)}, is one
+parameter, named \code{var_*|g} or \code{cov_*|g} for grouping factor
+\code{g}. Terms whose covariance matrix is not linear in its variances
+and covariances, \code{cs()} with separate variances and \code{ar1()},
+each with three or more effects, are not supported.
+
+Prior weights \eqn{w_i} and offsets are supported; as in \code{lme4},
+observation \eqn{i} then has error variance \eqn{\psi_r / w_i}, with
+\eqn{\psi_r} the error variance parameter.
 }
 \examples{
 library(lme4)

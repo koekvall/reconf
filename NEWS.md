@@ -3,6 +3,20 @@
 * Builds with Eigen 5 (RcppEigen 0.4.9.9 and later): sparse matrix
   arguments use `Eigen::Map<Eigen::SparseMatrix<double>>` in place of
   `Eigen::MappedSparseMatrix`, which Eigen 5 removes (#4, @eddelbuettel).
+* Random-effect terms with the covariance structures of lme4 2.0 are
+  handled. `diag()`, `cs(hom = TRUE)`, and `cs()` or `ar1()` with two
+  effects are supported, with only the distinct parameters of the term: a
+  variance or covariance shared by its effects is one parameter, named
+  `var_*|g` or `cov_*|g`. Structures not linear in the variances and
+  covariances, `cs()` with separate variances and `ar1()`, each with three
+  or more effects, are an error. reconf 0.2.0 misread all of these terms
+  and could return wrong intervals without an error.
+* `vc_model()` builds the covariance structure of an lme4 fit from the
+  structure each term declares, takes the estimates from the fitted
+  covariance matrix of the random effects instead of `VarCorr()`, and stops
+  if the structure does not reproduce that matrix. It also stops, with a
+  message, when lme4 reports a residual standard deviation that is not
+  finite, as lme4 2.0-6 can for a fit whose optimizer stopped early.
 * `vc_test()` and `vc_ci()` warn when the maximization over the nuisance
   parameters stops away from a root of their score. `vc_ci()` also warns
   when the maximization over the parameter set does, for

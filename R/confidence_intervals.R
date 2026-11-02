@@ -7,7 +7,8 @@
 #' @param object a fitted linear mixed model of class \code{lmerMod} from
 #'   \code{lme4::lmer}, or a \code{\link{vc_model}}.
 #' @param parm parameters, as names (see Value) or as indices in the order
-#'   of \code{\link{vc_model}}, which for an lme4 fit is that of
+#'   of \code{\link{vc_model}}, which for an lme4 fit with unstructured
+#'   terms is that of
 #'   \code{as.data.frame(VarCorr(fit), order = "lower.tri")}, with the error
 #'   variance last. If \code{NULL}, all covariance parameters not in
 #'   \code{known}.

@@ -5,8 +5,10 @@ RcppEigen maintainers asked for it: RcppEigen will move to Eigen 5, which
 removes `Eigen::MappedSparseMatrix`, and reconf 0.2.0 would then fail to
 compile (https://github.com/RcppCore/RcppEigen/issues/151). Version 0.2.1
 uses `Eigen::Map<Eigen::SparseMatrix<double>>` instead, which compiles with
-both the current RcppEigen and its release candidate. The update also adds
-warnings when an internal maximization stops away from a root of the score.
+both the current RcppEigen and its release candidate. The update also fixes
+the handling of random-effect terms with the covariance structures
+introduced in lme4 2.0, which reconf 0.2.0 misread, and adds warnings when
+an internal maximization stops away from a root of the score.
 
 ## Test environments
 

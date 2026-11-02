@@ -35,7 +35,7 @@ test_that("vc_loglik returns named value, score, and information", {
   out_v <- ll(psi_hat, get_score = FALSE, get_inf = FALSE)
   expect_null(out_v$score)
   expect_null(out_v$information)
-  expect_identical(out_v$value, out$value)
+  expect_equal(out_v$value, out$value, tolerance = 1e-12)
   # Outside the parameter set
   expect_identical(ll(c(-1e6, 0, 35, 650))$value, -Inf)
   expect_error(ll(psi_hat[-1]), "length r = 4")

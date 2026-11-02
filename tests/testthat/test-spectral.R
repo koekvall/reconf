@@ -209,9 +209,11 @@ test_that("make_loglik dispatches on method and precomp tag", {
   # A supplied precomp determines the path regardless of method
   pc_s <- reconf:::get_precomp(d$Y, d$X, d$Z, Hlist = d$Hlist,
                                method = "spectral")
-  out_pc <- ll_d(REML = TRUE, precomp = pc_s, method = "q_side")(d$psi)
-  out_s <- ll_d(REML = TRUE, method = "spectral")(d$psi)
-  expect_identical(out_pc, out_s)
+  ll_pc <- ll_d(REML = TRUE, precomp = pc_s, method = "q_side")
+  expect_identical(environment(ll_pc)$path, "spectral")
+  # Not identical: BLAS such as MKL need not be reproducible across calls
+  expect_equal(ll_pc(d$psi), ll_d(REML = TRUE, method = "spectral")(d$psi),
+               tolerance = 1e-10)
 
   # Infeasible parameters keep the q-side return shapes
   out_bad <- ll_d(REML = TRUE, method = "spectral")(c(-100, 0.5))

@@ -1,11 +1,10 @@
 library(lme4)
 
-# lme4 2.0 and later declare a covariance structure per random-effect term
+# Covariance structures need lme4 2.0
 has_structures <- "getReCovs" %in% getNamespaceExports("lme4")
 
-# The structure matrices as reconf 0.2.0 built them, from the nonzero
-# positions of Lambdat and the theta index Lind; correct for unstructured
-# terms, which are the only ones before lme4 2.0
+# H as reconf 0.2.0 built it, from Lambdat and Lind; correct for
+# unstructured terms
 Hlist_from_Lind <- function(fit) {
   H <- getME(fit, "Lambdat")
   param_idx <- getME(fit, "Lind")
@@ -62,8 +61,7 @@ test_that("diag() terms have no covariances and match the || fit", {
   expect_identical(m$names, c("var_(Intercept)|Subject", "var_Days|Subject",
                               "var_Residual"))
   expect_equal(m$psi_hat, vc_model(fit_u)$psi_hat, tolerance = 1e-6)
-  # Same model as the || fit, so the same intervals; reconf 0.2.0 gave
-  # infinite ones here
+  # Same model as the || fit; reconf 0.2.0 gave infinite intervals
   ci_d <- vc_ci(fit_d)
   expect_true(all(is.finite(as.matrix(ci_d[, c("lower", "upper")]))))
   expect_equal(unname(as.matrix(ci_d[, c("lower", "upper")])),
@@ -86,7 +84,7 @@ test_that("diag(hom = TRUE) and cs(hom = TRUE) share parameters", {
   S <- VarCorr(fit_ch)$g
   expect_equal(m$psi_hat[1:2], c(S[1, 1], S[2, 1]), tolerance = 1e-10)
   expect_identical(m$structure$is_var, c(TRUE, FALSE, TRUE))
-  # The score vanishes at the estimates, as for any other lme4 fit
+  # Score near zero at the estimates
   expect_lt(max(abs(vc_loglik(m)(m$psi_hat)$score)), 1e-2)
   ci <- vc_ci(m)
   expect_true(all(ci[, "lower"] < m$psi_hat & m$psi_hat < ci[, "upper"]))
@@ -94,15 +92,15 @@ test_that("diag(hom = TRUE) and cs(hom = TRUE) share parameters", {
 
 test_that("two-effect cs() and ar1() terms reduce to linear structures", {
   skip_if_not(has_structures)
-  # cs() with separate variances allows every 2 x 2 covariance matrix
+  # With two effects, cs() is us
   fit_cs <- fit_s("cs(1 + x1 | g)")
   fit_us <- fit_s("(1 + x1 | g)")
   expect_identical(vc_model(fit_cs)$names, vc_model(fit_us)$names)
   expect_equal(unname(as.matrix(vc_ci(fit_cs)[, c("lower", "upper")])),
                unname(as.matrix(vc_ci(fit_us)[, c("lower", "upper")])),
                tolerance = 1e-4)
-  # ar1() with a common variance is cs(hom = TRUE); with two effects the
-  # covariance is a single entry and keeps its own name
+  # With two effects, ar1() is cs(hom = TRUE); its one covariance keeps its
+  # own name
   fit_ar <- fit_s("ar1(1 + x1 | g)")
   fit_ch <- fit_s("cs(1 + x1 | g, hom = TRUE)")
   expect_identical(vc_model(fit_ar)$names,
@@ -146,7 +144,7 @@ test_that("a structure that does not reproduce the fit is an error", {
   Psi_fit <- sigma(fit)^2 * Matrix::tcrossprod(getME(fit, "Lambda"))
   psi <- s$psi_hat[-4]
   expect_true(reconf:::.check_reproduces(Psi_fit, psi, s$Hlist))
-  # A covariance read as zero, as a diag() pattern on this fit would
+  # Covariance read as zero, as by a diag() pattern
   expect_error(reconf:::.check_reproduces(Psi_fit, psi * c(1, 0, 1),
                                           s$Hlist),
                "laid out differently")
@@ -156,8 +154,8 @@ test_that("a structure that does not reproduce the fit is an error", {
 })
 
 test_that("the check compares each entry on its own scale", {
-  # A variance of 1e4 next to a cs(hom = TRUE) term with two levels,
-  # variance 1e-4, and covariance 5e-5
+  # Variance 1e4 next to a two-level cs(hom = TRUE) term with variance 1e-4
+  # and covariance 5e-5
   sym <- function(M) Matrix::forceSymmetric(as(M, "CsparseMatrix"))
   P   <- reconf:::.term_pattern(3L, "cs", TRUE)
   Hk  <- function(k) sym(Matrix::bdiag(0, (P == k) * 1, (P == k) * 1))
@@ -167,8 +165,7 @@ test_that("the check compares each entry on its own scale", {
   diag(blk) <- 1e-4
   expect_true(reconf:::.check_reproduces(sym(Matrix::bdiag(1e4, blk, blk)),
                                          psi, Hlist))
-  # One covariance of the second level wrong by less than 1e-8 of the
-  # largest variance
+  # One covariance off by less than 1e-8 of the largest variance
   bad <- blk
   bad[3, 1] <- bad[1, 3] <- 2e-5
   expect_error(reconf:::.check_reproduces(sym(Matrix::bdiag(1e4, blk, bad)),
@@ -180,7 +177,7 @@ test_that("the check compares each entry on its own scale", {
 })
 
 test_that("a fit with residual standard deviation NaN is an error", {
-  # As lme4 2.0-6 can return when its optimizer stops early
+  # As in some lme4 2.0-6 fits
   fit <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy)
   fit@devcomp$cmp[["sigmaREML"]] <- NaN
   expect_error(vc_model(fit), "residual standard deviation of NaN")

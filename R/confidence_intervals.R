@@ -82,10 +82,9 @@
 #' the parameter set. A warning is issued if that maximizer has a negative
 #' variance; the interval for that variance can then lie entirely below zero.
 #'
-#' A warning is also issued if the maximization over the nuisance parameters
-#' stops away from a root of their score at some point of the search, or if
-#' the maximization over the parameter set does, when its maximizer is used.
-#' The search points are not checked with \code{onestep = TRUE}.
+#' A warning is also issued if an internal maximization stops away from a
+#' root of the score. With \code{onestep = TRUE} the search points are not
+#' checked.
 #'
 #' The likelihood is computed by one of three methods. \code{"q_side"} uses
 #' sparse \eqn{q \times q} matrices, where \eqn{q} is the number of random
@@ -239,11 +238,12 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
   }
   opt_idx <- seq_along(setup$psi_hat)[-unique(c(test_idx, known_idx))]
 
-  # Everything the profile evaluations and the outward search need that is
-  # fixed for this parameter; roots counts maximizations and missed roots
+  # Counts of maximizations and missed roots
   roots <- new.env()
   roots$n <- 0L
   roots$miss <- 0L
+  # Everything the profile evaluations and the outward search need that is
+  # fixed for this parameter
   ctx <- list(setup = setup, test_idx = test_idx, known_idx = known_idx,
               opt_idx = opt_idx, statistic = statistic, ll_max = ll_max,
               expected = expected, opt_args = opt_args, z_crit = z_crit,
@@ -274,7 +274,7 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
       rlrt_ref <- .rlrt_reference(setup, known_idx, expected, ...)
     }
     theta_origin <- rlrt_ref$arg
-    # The evaluation at the estimate is discarded, and so are its root counts
+    # Discard the root counts from the evaluation at the estimate
     roots$n <- 0L
     roots$miss <- 0L
     origin_eval <- .origin_eval()

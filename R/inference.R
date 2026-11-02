@@ -46,10 +46,8 @@
 #'   \item{conv}{Logical, whether the optimizer converged.}
 #'   \item{iter}{The number of iterations.}
 #'   \item{root}{Logical, whether \code{score_max < root_tol}.}
-#'   \item{score_max}{The largest absolute score in \code{opt_idx}, each
-#'     divided by its \code{parscale} entry, or, if trust's default scaling
-#'     was used, by the square root of the information diagonal at the
-#'     result; \code{Inf} if that diagonal is not positive.}
+#'   \item{score_max}{The largest absolute score in \code{opt_idx}, scaled as
+#'     in the root check; \code{Inf} if the scale is not positive.}
 #'
 #' @noRd
 maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
@@ -74,8 +72,7 @@ maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
   if (is.null(parscale)) {
     # trust's region is ||diag(parscale) s|| <= r; the square root of the
     # information diagonal at the start makes it the diagonal information
-    # metric there. The observed information can have a nonpositive
-    # diagonal away from a maximizer; trust's default is used then.
+    # metric there. Default scaling if that diagonal is not positive.
     d <- diag(as.matrix(obj_fun(start_val[opt_idx])$hessian))
     if (all(is.finite(d)) && all(d > 0)) {
       parscale <- sqrt(d)
@@ -92,9 +89,8 @@ maximize_loglik <- function(start_val, opt_idx, ll, expected = TRUE,
             " iterations")
   }
 
-  # Root check in units of parscale. Without one, standardize by the
-  # information diagonal at the result; a nonpositive diagonal there means
-  # the result is not a maximizer.
+  # Root check in units of parscale, or of the square root of the information
+  # diagonal at the result; no root if that diagonal is not positive
   ps <- parscale
   if (is.null(ps)) {
     d <- diag(as.matrix(fit$hessian))

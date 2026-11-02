@@ -2,8 +2,8 @@ library(lme4)
 
 fit_rs <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy, REML = TRUE)
 
-# Correlation 0.999, 20 groups of 10: at the true covariance the nuisance
-# maximization stops away from a root
+# Correlation 0.999, 20 groups of 10; the nuisance maximization at the true
+# covariance misses the root
 set.seed(34)
 g <- factor(rep(1:20, each = 10))
 x <- runif(200, -1, 1)
@@ -13,8 +13,7 @@ fit_miss <- suppressMessages(lmer(y ~ x + (x | g)))
 
 # ── root check ──────────────────────────────────────────────────────────────
 
-# The misses below depend on the optimizer path, which can differ across
-# platforms, so they are not run on CRAN
+# Misses depend on the optimizer path, which varies by platform; not on CRAN
 test_that("maximize_loglik flags whether it found a root", {
   m <- vc_model(fit_rs)
   expect_true(reconf:::maximize_loglik(m$psi_hat, 1:4, m$ll)$root)

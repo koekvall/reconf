@@ -7,7 +7,8 @@
 #' @param object a fitted linear mixed model of class \code{lmerMod} from
 #'   \code{lme4::lmer}, or a \code{\link{vc_model}}.
 #' @param parm parameters, as names (see Value) or as indices in the order
-#'   of \code{\link{vc_model}}, which for an lme4 fit is that of
+#'   of \code{\link{vc_model}}, which for an lme4 fit with unstructured
+#'   terms is that of
 #'   \code{as.data.frame(VarCorr(fit), order = "lower.tri")}, with the error
 #'   variance last. If \code{NULL}, all covariance parameters not in
 #'   \code{known}.
@@ -80,6 +81,10 @@
 #' With \code{statistic = "rlrt"}, the search starts from the maximizer over
 #' the parameter set. A warning is issued if that maximizer has a negative
 #' variance; the interval for that variance can then lie entirely below zero.
+#'
+#' A warning is also issued if an internal maximization stops away from a
+#' root of the score. With \code{onestep = TRUE} the search points are not
+#' checked.
 #'
 #' The likelihood is computed by one of three methods. \code{"q_side"} uses
 #' sparse \eqn{q \times q} matrices, where \eqn{q} is the number of random
@@ -233,13 +238,17 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
   }
   opt_idx <- seq_along(setup$psi_hat)[-unique(c(test_idx, known_idx))]
 
+  # Counts of maximizations and missed roots
+  roots <- new.env()
+  roots$n <- 0L
+  roots$miss <- 0L
   # Everything the profile evaluations and the outward search need that is
   # fixed for this parameter
   ctx <- list(setup = setup, test_idx = test_idx, known_idx = known_idx,
               opt_idx = opt_idx, statistic = statistic, ll_max = ll_max,
               expected = expected, opt_args = opt_args, z_crit = z_crit,
               step_size = step_size, max_steps = as.integer(num_points),
-              accelerate = accelerate)
+              accelerate = accelerate, onestep = onestep, roots = roots)
 
   # Evaluate the signed statistic at the search origin. It vanishes at an
   # interior maximizer but not at a boundary estimate, and an assumed zero
@@ -265,6 +274,9 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
       rlrt_ref <- .rlrt_reference(setup, known_idx, expected, ...)
     }
     theta_origin <- rlrt_ref$arg
+    # Discard the root counts from the evaluation at the estimate
+    roots$n <- 0L
+    roots$miss <- 0L
     origin_eval <- .origin_eval()
   }
 
@@ -309,6 +321,13 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
             "Consider decreasing step_size or increasing num_points.")
   }
 
+  if (roots$miss > 0L) {
+    warning("For '", setup$names[test_idx], "', the maximization over the ",
+            "nuisance parameters stopped away from a root of their score at ",
+            roots$miss, " of ", roots$n, " points of the search; the ",
+            "interval may be unreliable.")
+  }
+
   matrix(c(setup$psi_hat[test_idx], lower, upper), nrow = 1L,
          dimnames = list(setup$names[test_idx],
                          c("estimate", "lower", "upper")))
@@ -328,10 +347,17 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
 .rlrt_reference <- function(setup, known_idx, expected = TRUE, ...) {
   free_idx <- seq_len(setup$r)
   if (length(known_idx) > 0L) free_idx <- setdiff(free_idx, known_idx)
-  do.call(maximize_loglik,
-          c(list(start_val = setup$psi_hat, opt_idx = free_idx,
-                 ll = setup$ll, expected = expected, check = FALSE),
-            list(...)))
+  ref <- do.call(maximize_loglik,
+                 c(list(start_val = setup$psi_hat, opt_idx = free_idx,
+                        ll = setup$ll, expected = expected, check = FALSE),
+                   list(...)))
+  if (!ref$root) {
+    warning("The maximization over the extended parameter set stopped away ",
+            "from a root of the score (largest standardized score ",
+            format(ref$score_max, digits = 3), "); intervals that use the ",
+            "maximizer may be unreliable.")
+  }
+  ref
 }
 
 # Log-likelihood value at psi; -Inf if the evaluation fails (infeasible psi).
@@ -408,6 +434,10 @@ vc_ci <- function(object, parm = NULL, level = 0.95,
       error = function(e) NULL
     )
     if (is.null(opt)) return(NULL)
+    if (!ctx$onestep) {
+      ctx$roots$n <- ctx$roots$n + 1L
+      if (!opt$root) ctx$roots$miss <- ctx$roots$miss + 1L
+    }
     theta_start <- opt$arg
     ll_prof <- opt$value
   } else if (ctx$statistic == "rlrt") {

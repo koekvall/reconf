@@ -24,7 +24,8 @@ vc_ci(
 \code{lme4::lmer}, or a \code{\link{vc_model}}.}
 
 \item{parm}{parameters, as names (see Value) or as indices in the order
-of \code{\link{vc_model}}, which for an lme4 fit is that of
+of \code{\link{vc_model}}, which for an lme4 fit with unstructured
+terms is that of
 \code{as.data.frame(VarCorr(fit), order = "lower.tri")}, with the error
 variance last. If \code{NULL}, all covariance parameters not in
 \code{known}.}
@@ -113,6 +114,10 @@ over the parameter set, with a warning.
 With \code{statistic = "rlrt"}, the search starts from the maximizer over
 the parameter set. A warning is issued if that maximizer has a negative
 variance; the interval for that variance can then lie entirely below zero.
+
+A warning is also issued if an internal maximization stops away from a
+root of the score. With \code{onestep = TRUE} the search points are not
+checked.
 
 The likelihood is computed by one of three methods. \code{"q_side"} uses
 sparse \eqn{q \times q} matrices, where \eqn{q} is the number of random

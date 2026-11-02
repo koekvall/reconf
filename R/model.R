@@ -22,9 +22,15 @@
 #'   the model was fitted by REML, and the estimates are those of lme4. The
 #'   parameters are ordered as in
 #'   \code{as.data.frame(VarCorr(x), order = "lower.tri")}, with the error
-#'   variance last. Prior weights \eqn{w_i} and offsets are supported; as in
-#'   \code{lme4}, observation \eqn{i} then has error variance
-#'   \eqn{\psi_r / w_i}, with \eqn{\psi_r} the error variance parameter.
+#'   variance last. A term with a covariance structure (lme4 2.0 and later)
+#'   has only its distinct parameters. A variance or covariance shared by
+#'   the term's effects is named \code{var_*|g} or \code{cov_*|g}, for
+#'   grouping factor \code{g}. With three or more effects, \code{cs()} with
+#'   separate variances and \code{ar1()} are not supported.
+#'
+#'   Prior weights \eqn{w_i} and offsets are supported; as in \code{lme4},
+#'   observation \eqn{i} then has error variance \eqn{\psi_r / w_i}, with
+#'   \eqn{\psi_r} the error variance parameter.
 #'
 #' @examples
 #' library(lme4)
@@ -77,6 +83,9 @@ print.vc_model <- function(x, digits = 4, ...) {
   if (is.null(X)) X <- matrix(0, length(Y), 0)
   REML    <- REML && ncol(X) > 0
   r       <- length(Hlist) + 1L
+  if (length(psi_hat) != r || (!is.null(names) && length(names) != r)) {
+    stop("psi_hat and names should have length r = ", r, call. = FALSE)
+  }
   precomp <- get_precomp(Y = Y, X = X, Z = Z, Hlist = Hlist, method = method)
   structure(
     list(ll = make_loglik(Y = Y, X = X, Z = Z, Hlist = Hlist, REML = REML,

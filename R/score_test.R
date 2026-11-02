@@ -27,7 +27,8 @@
 #'   whose variance is tested at zero set to zero. If the covariance matrix
 #'   of the response is not positive definite at this start, free entries
 #'   of \eqn{\Psi} are changed to make its blocks weakly diagonally
-#'   dominant, and the error variance is doubled until it is.
+#'   dominant, and the error variance is doubled until it is. A warning is
+#'   issued if the maximization stops away from a root of the score.
 #'
 #' @references Shedden, M. and Ekvall, K. O. (2026). Score-based confidence
 #'   intervals for variance-covariance parameters in linear mixed models.
@@ -98,8 +99,15 @@ vc_test <- function(object, parm = NULL, null_value = 0, expected = TRUE,
   # that of maximize_loglik
   opt_idx <- seq_len(r)[-fixed]
   if (length(opt_idx) > 0) {
-    psi <- maximize_loglik(start_val = psi, opt_idx = opt_idx, ll = setup$ll,
-                           expected = expected, ...)$arg
+    opt <- maximize_loglik(start_val = psi, opt_idx = opt_idx, ll = setup$ll,
+                           expected = expected, ...)
+    psi <- opt$arg
+    if (!opt$root) {
+      warning("The maximization over the nuisance parameters stopped away ",
+              "from a root of their score (largest standardized score ",
+              format(opt$score_max, digits = 3), "); the statistic may be ",
+              "unreliable.")
+    }
   }
 
   test_stat <- as.numeric(score_stat(psi = psi, test_idx = test_idx,

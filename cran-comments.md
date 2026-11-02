@@ -15,6 +15,9 @@ an internal maximization stops away from a root of the score.
 - Local: macOS 27 (Apple Silicon), R 4.6.1, with RcppEigen 0.3.4.0.2 from
   CRAN and with the release candidate 0.4.9.9.5 from
   https://rcppcore.r-universe.dev
+- GitHub Actions: macOS, Windows, and Ubuntu with R release; Ubuntu with
+  R-devel and R oldrel-1
+- win-builder: R-devel (2026-11-01 r90825 ucrt)
 
 ## R CMD check results
 
